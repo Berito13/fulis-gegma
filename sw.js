@@ -1,6 +1,6 @@
 // Offline cache for the app shell. User data is NOT here — it lives in the browser's localStorage.
 // Bump VERSION when publishing a new build so phones drop the old cache.
-const VERSION = 'fulis-gegma-v10';
+const VERSION = 'fulis-gegma-v11';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

@@ -118,6 +118,15 @@ details.mer[open] > summary .nm{font-weight:600}
 .mtx{margin-top:8px;background:var(--surface-2);border-radius:10px;padding:2px 10px}
 .mtr{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)}
 .mtr:last-child{border-bottom:0}
+/* plan lines without an amount */
+.npb{display:none;font-size:12px;font-weight:600;color:var(--text);background:var(--warn-bg);border-radius:8px;padding:4px 8px;margin-bottom:7px}
+.item.noplan{border-color:var(--warning)}
+.item.noplan .npb{display:block}
+.npwarn{margin-top:10px;font-size:13px;background:var(--warn-bg);border-radius:10px;padding:8px 10px;line-height:1.6}
+.np-count{margin-left:6px}
+@keyframes flash{0%,40%{box-shadow:0 0 0 3px var(--warning)}100%{box-shadow:0 0 0 0 transparent}}
+.item.flash{animation:flash 1.8s ease-out}
+nav.tabs .badge.warn{background:var(--warning);color:#1b1b1b}
 .mergebar{font-size:13px;background:var(--accent-soft);border-radius:10px;padding:8px 10px;margin:4px 0 6px}
 label.cat.mrg{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
 label.cat.mrg input{margin-top:3px;width:18px;height:18px;flex:none}
@@ -274,7 +283,7 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--te
   <nav class="tabs" id="tabs">
     <button data-tab="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>მიმოხილვა</button>
     <button data-tab="tx"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>ტრანზაქციები<span class="badge" id="badge" hidden></span></button>
-    <button data-tab="plan"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l4-4 3 3 5-6"/></svg>გეგმა</button>
+    <button data-tab="plan"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l4-4 3 3 5-6"/></svg>გეგმა<span class="badge warn" id="badgePlan" hidden></span></button>
     <button data-tab="more"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>პარამეტრები</button>
   </nav>
   <div class="sheet-bg" id="sheetBg" hidden><div class="sheet" id="sheet"></div></div>
@@ -953,6 +962,7 @@ function render(){
   for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === ui.tab);
   const uncAll = state.tx.filter(t => { const e = effCat(t); return !e.cat && e.src === null; }).length;
   const badge = document.getElementById('badge'); badge.hidden = !uncAll; badge.textContent = uncAll > 99 ? '99+' : uncAll;
+  const npAll = noPlanList(R).length, bp = document.getElementById('badgePlan'); bp.hidden = !npAll; bp.textContent = npAll;
   const st = main.scrollTop;
   main.innerHTML = ui.tab === 'home' ? viewHome(R) : ui.tab === 'tx' ? viewTx(R) : ui.tab === 'plan' ? viewPlan(R) : viewMore(R);
   if (ui.tab === 'home') drawChart(R);
@@ -1063,7 +1073,7 @@ function catRow(name, fact, plan, unplanned, uncN, noFact, id, pace){
   let bar = '', flag = '';
   if (unplanned) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">${uncN} ტრანზ.</span>`; }
   else if (noFact) { bar = ''; }
-  else if (plan <= 0.5) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">დაუგეგმავი</span>`; }
+  else if (plan <= 0.5) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">დაუგეგმავი</span>${id ? `<span class="link" data-act="goto-item" data-id="${id}">დააყენე გეგმა →</span>` : ''}`; }
   else {
     const p = fact / plan;
     if (p > 1.0001) { bar = `<i style="width:${100 / p}%"></i><i class="over" style="width:${100 - 100 / p}%;border-radius:0 4px 4px 0"></i>`; flag = `<span class="flag over">+${fmt(fact - plan)} ზედმეტი</span>`; }
@@ -1342,6 +1352,16 @@ function secSum(R, key){
   if (key === 'goals') return money(R.goalInfo.reduce((a, x) => a + (x.n > 0 ? x.monthly : 0), 0)) + '/თვე';
   return 'საშ. ' + money(avg(R.tot[key])) + '/თვე';
 }
+// a plan line (= category) "has a plan" when some amount is set for the plan period
+const CAT_KINDS = ['income', 'fixed', 'variable', 'annual', 'oneoff'];
+function hasPlan(it, k, R){
+  if (k === 'annual') return +it.amount > 0 && (it.months || []).length > 0;
+  if (k === 'oneoff') return +it.amount > 0 && !!it.month;
+  if (it.repeat) return +it.amount > 0;
+  return R.M.some(i => +((it.byMonth || {})[idxToYm(i)]) > 0);
+}
+function noPlanList(R){ const out = []; for (const k of CAT_KINDS) for (const it of state[k]) if (!hasPlan(it, k, R)) out.push({ it, kind: k }); return out; }
+const npBox = np => np.length ? `<div class="npwarn">⚠ <b>${np.length} კატეგორიას გეგმა არ აქვს:</b> ${np.map(x => `<button class="link" data-act="goto-item" data-id="${x.it.id}">${esc(x.it.name || '(უსახელო)')}</button>`).join(', ')}</div>` : '';
 function viewPlan(R){
   const avg = a => a.reduce((x, y) => x + y, 0) / R.H;
   const inc = avg(R.tot.income), exp = avg(R.expTot);
@@ -1349,15 +1369,37 @@ function viewPlan(R){
     <span class="l">საშ. შემოსავალი / თვე</span><span class="v" id="ps-inc">${money(inc)}</span>
     <span class="l">საშ. ხარჯი / თვე</span><span class="v" id="ps-exp">${money(exp)}</span>
     <span class="sep"></span><span class="l"><b>დარჩება / თვე</b></span><span class="v" id="ps-net">${money(inc - exp)}</span></div>
-    <p class="small muted" style="margin:8px 0 0">${mLong(R.s0)} – ${mLong(R.s0 + R.H - 1)} · სცენარი: ${state.settings.scenario === 'cons' ? 'კონსერვატიული' : 'ძირითადი'}. პერიოდი და საწყისი ნაშთი — „პარამეტრებში“.</p></div>`;
+    <p class="small muted" style="margin:8px 0 0">${mLong(R.s0)} – ${mLong(R.s0 + R.H - 1)} · სცენარი: ${state.settings.scenario === 'cons' ? 'კონსერვატიული' : 'ძირითადი'}. პერიოდი და საწყისი ნაშთი — „პარამეტრებში“.</p>
+    <div id="np-box">${npBox(noPlanList(R))}</div></div>`;
   const gi = Object.fromEntries(R.goalInfo.map(x => [x.g.id, x]));
   for (const sec of SECTIONS) {
     const items = state[sec.key]; const open = ui.openSec[sec.key] ?? (sec.key === 'variable');
-    h += `<details class="sec" data-sec="${sec.key}"${open ? ' open' : ''}><summary><h2>${sec.title}</h2><span class="sum" id="sum-${sec.key}">${secSum(R, sec.key)}</span></summary><div class="body">
-      <p class="hint">${sec.hint}</p>${items.map(it => sec.row(it, gi[it.id], R)).join('')}
+    const npN = CAT_KINDS.includes(sec.key) ? items.filter(it => !hasPlan(it, sec.key, R)).length : 0;
+    // every line gets an anchor id; lines without an amount get the yellow "no plan" mark (shown/hidden live by class)
+    const row = it => sec.row(it, gi[it.id], R).replace('<div class="item">',
+      `<div class="item${CAT_KINDS.includes(sec.key) && !hasPlan(it, sec.key, R) ? ' noplan' : ''}" id="item-${it.id}"><div class="npb">⚠ გეგმა არ არის — ჩაწერე თანხა</div>`);
+    h += `<details class="sec" data-sec="${sec.key}"${open ? ' open' : ''}><summary><h2>${sec.title}</h2><span class="sum" id="sum-${sec.key}">${secSum(R, sec.key)}</span><span class="flag unpl np-count" id="npc-${sec.key}"${npN ? '' : ' hidden'}>⚠ ${npN}</span></summary><div class="body">
+      <p class="hint">${sec.hint}</p>${items.map(row).join('')}
       <button class="add" data-act="add" data-list="${sec.key}">+ დამატება</button></div></details>`;
   }
   return h;
+}
+// open the plan at one line and put the cursor into its amount
+function gotoItem(id){
+  closeSheet(); refreshIndex();
+  const x = IDX.get(id); if (!x) return;
+  ui.tab = 'plan'; ui.openSec[x.kind] = true; render();
+  const el = document.getElementById('item-' + id); if (!el) return;
+  main.scrollTo({ top: el.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop - 12, behavior: 'instant' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  const inp = el.querySelector('input[data-field="amount"], input[data-field^="m:"]'); if (inp) setTimeout(() => inp.focus(), 60);
+}
+function updateNoPlanMarks(R){
+  const np = noPlanList(R), ids = new Set(np.map(x => x.it.id));
+  for (const k of CAT_KINDS) for (const it of state[k]) { const el = document.getElementById('item-' + it.id); if (el) el.classList.toggle('noplan', ids.has(it.id)); }
+  for (const k of CAT_KINDS) { const c = document.getElementById('npc-' + k); if (c) { const n = np.filter(x => x.kind === k).length; c.hidden = !n; c.textContent = '⚠ ' + n; } }
+  const box = document.getElementById('np-box'); if (box) box.innerHTML = npBox(np);
+  const bp = document.getElementById('badgePlan'); if (bp) { bp.hidden = !np.length; bp.textContent = np.length; }
 }
 function updatePlanSums(){
   const R = compute(); const avg = a => a.reduce((x, y) => x + y, 0) / R.H;
@@ -1367,6 +1409,7 @@ function updatePlanSums(){
   set('ps-inc', inc); set('ps-exp', exp); set('ps-net', inc - exp);
   for (const x of R.goalInfo) { const el = main.querySelector(`[data-goal="${x.g.id}"]`); if (el) el.innerHTML = goalTxt(x); }
   for (const k of ['income', 'fixed', 'variable']) for (const it of state[k]) { const el = document.getElementById('tot-' + it.id); if (el) el.textContent = manualTotal(it, R); }
+  updateNoPlanMarks(R);
 }
 
 /* ---------- settings ---------- */
@@ -1469,8 +1512,13 @@ function onAct(e){
     const kind = t.amt > 0 ? 'income' : 'variable', nid = uid();
     state[kind].push(kind === 'income' ? { id: nid, name, amount: 0, cur: 'GEL', repeat: true, byMonth: {}, start: '', end: '', uncertain: false }
                                        : { id: nid, name, amount: 0, cur: 'GEL', repeat: true, byMonth: {} });
-    refreshIndex(); setCat(t.id, nid); return;
+    refreshIndex(); setCat(t.id, nid);
+    openSheet(`<div class="grab"></div><h3>კატეგორია „${esc(name)}“ შეიქმნა</h3>
+      <p class="small t2">ტრანზაქციას მიენიჭა. <b>გეგმაში თანხა ჯერ არ აქვს</b> — სანამ არ ჩაწერ, გეგმაში ყვითლად მოინიშნება.</p>
+      <div class="btns"><button class="btn primary block" data-act="goto-item" data-id="${nid}">დააყენე გეგმა ახლა</button><button class="btn block" data-act="close">მოგვიანებით</button></div>`);
+    return;
   }
+  if (a === 'goto-item') { e.stopPropagation(); gotoItem(b.dataset.id); return; }
   if (a === 'clearcat') { const t = state.tx.find(x => x.id === b.dataset.id); if (t) delete t.cat; save(); closeSheet(); ui.keepScroll = true; render(); return; }
   if (a === 'add') { const sec = SECTIONS.find(s => s.key === b.dataset.list); state[sec.key].push(sec.add()); ui.openSec[sec.key] = true; save(); ui.keepScroll = true; render();
     const inp = main.querySelector(`details[data-sec="${sec.key}"] .item:last-of-type input`); if (inp) inp.focus(); return; }
