@@ -368,6 +368,8 @@ function normalize(st){
   const out = { version: 2, settings: Object.assign({}, b.settings, st.settings), accounts: st.accounts && typeof st.accounts === 'object' ? st.accounts : {} };
   for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff', 'goals', 'rules', 'tx', 'imports', 'merges']) out[k] = Array.isArray(st[k]) ? st[k] : [];
   for (const k of ['income', 'fixed', 'variable']) for (const it of out[k]) migrateItem(it, out.settings, k);
+  // older imports: TBC card → loan account transfers were not labelled as loan repayment
+  for (const t of out.tx) if (t.bank === 'TBC' && t.bankCat !== 'სესხის დაფარვა' && (t.op === 'LCOL' || /სესხის დაფარვა|თანხის ავტომატური შეგროვება/.test(t.desc || ''))) t.bankCat = 'სესხის დაფარვა';
   return out;
 }
 // older saves had one amount (+ "months"/"once" schedule for income); convert to repeat / per-month amounts
@@ -477,7 +479,7 @@ function itemIndex(){
 }
 let IDX = itemIndex();
 let OWN = new Set(Object.keys(state.accounts));
-function refreshIndex(){ IDX = itemIndex(); OWN = new Set(Object.keys(state.accounts)); }
+function refreshIndex(){ IDX = itemIndex(); OWN = new Set(Object.keys(state.accounts)); if (typeof nameCache !== 'undefined') nameCache = new Map(); }
 function autoInternal(t){
   if (t.op === 'FX' || /^კონვერტაცია/.test(t.desc || '')) return true;
   if (t.partnerAcct && OWN.has(t.partnerAcct)) return true;
@@ -489,7 +491,39 @@ function ruleFor(t){
   if (!r) r = state.rules.find(x => x.type === 'bankcat' && x.value === c && c);
   return r && (r.itemId === '__internal' || r.itemId === '__none' || IDX.has(r.itemId)) ? r : null;
 }
-// returns {cat, src}: cat = itemId | '__internal' | null ; src = manual | auto | rule | null
+// bank category → words that a matching plan line name contains (works for any plan, also renamed / own lines)
+const NAME_MATCH = [
+  [/^სესხის (დაფარვა|დაზღვევა)$/, /სესხ|იპოთეკ|კრედიტ|განვადებ/],
+  [/^(სუპერმარკეტები|საკვების მაღაზიები|სასურსათო მაღაზიები)$/, /საკვებ|მარკეტ|სურსათ|პროდუქტ|სასადილო|კვება/],
+  [/^(კაფე \/ სწრაფი კვება|რესტორნები|ბარები)$/, /კაფე|რესტორ|მიწოდ|wolt|glovo|კვება/i],
+  [/^(საწვავი|ტაქსი|ტრანსპორტი|პარკინგი|მანქანა)$/, /ტრანსპორტ|საწვავ|ტაქსი|მანქან|ავტო|ბენზინ/],
+  [/^(კომუნალური|კომუნალური, მობილური, ჯარიმები|კავშირგაბმულობა)$/, /კომუნალ|მობილურ|ინტერნეტ|ტელეფონ|დენ|გაზ|წყალ/],
+  [/^(აფთიაქი|სამედიცინო)$/, /ჯანმრთ|აფთიაქ|მედიც|წამალ|ექიმ/],
+  [/^ტანსაცმელი$/, /ტანსაცმ|ფეხსაცმ/],
+  [/^გართობა$/, /გართობ|კინო/],
+  [/^ბანკის საკომისიო$/, /საკომისიო|ბანკ/],
+  [/^ხელფასი$/, /ხელფას/],
+  [/^ბავშვები$/, /ბავშვ|სათამაშ/],
+  [/^სილამაზე$/, /სილამაზ|კოსმეტ|თმ/],
+  [/^სპორტი$/, /სპორტ|დარბაზ|ფიტნეს/],
+  [/^(განათლება|წიგნები)$/, /განათლ|სწავლ|წიგნ|კურს/],
+  [/^(გამოწერები|ციფრული სერვისები)$/, /გამოწერ|subscription/i],
+  [/^სახლი და რემონტი$/, /სახლ|რემონტ|ავეჯ/],
+  [/^მოგზაურობა$/, /მოგზაურ|შვებულ|დასვენ/]
+];
+let nameCache = new Map();
+function nameMatch(t){
+  const bc = t.bankCat || ''; const inc = txGel(t) > 0 && !/^სესხ|საკომისიო/.test(bc);
+  const key = bc + '|' + inc; if (nameCache.has(key)) return nameCache.get(key);
+  let found = null;
+  const row = NAME_MATCH.find(([re]) => re.test(bc));
+  if (row) {
+    const kinds = inc ? ['income'] : ['fixed', 'variable', 'annual', 'oneoff'];
+    for (const k of kinds) { const it = state[k].find(i => row[1].test(i.name || '')); if (it) { found = it.id; break; } }
+  }
+  nameCache.set(key, found); return found;
+}
+// returns {cat, src}: cat = itemId | '__internal' | null ; src = manual | auto | rule | name | null
 function effCat(t){
   if (t.cat) {
     if (t.cat === '__internal') return { cat: '__internal', src: 'manual' };
@@ -499,6 +533,8 @@ function effCat(t){
   if (autoInternal(t)) return { cat: '__internal', src: 'auto' };
   const r = ruleFor(t);
   if (r) return { cat: r.itemId === '__none' ? null : r.itemId, src: 'rule' };
+  const n = nameMatch(t);
+  if (n) return { cat: n, src: 'name' };
   return { cat: null, src: null };
 }
 const txGel = t => (+t.amt || 0) * rateOf(t.cur);
@@ -627,7 +663,7 @@ function buildTBC(o){
   else if (/^\*?MBS/.test(op)) { merchant = desc.replace(/^საკომისიო:\s*/, '').split(';')[0].trim(); if (/^საკომისიო/.test(desc) || op === 'MBSFE') bankCat = 'ბანკის საკომისიო'; }
   else if (!partner || GENERIC_PARTNER.test(partner)) merchant = desc.split(/[;,]/)[0].trim();
   else merchant = partner.split(',')[0].trim();
-  if (/^\*?LP(PR|IN)/.test(op) || /^(ძირითადი თანხის|პროცენტის) დაფარვა/.test(desc)) bankCat = 'სესხის დაფარვა';
+  if (/^\*?LP(PR|IN)/.test(op) || op === 'LCOL' || /^(ძირითადი თანხის|პროცენტის) დაფარვა|სესხის დაფარვა|თანხის ავტომატური შეგროვება/.test(desc)) bankCat = 'სესხის დაფარვა';
   else if (/INSP/.test(op)) bankCat = 'სესხის დაზღვევა';
   else if (/TPC/.test(op) || /^საკომისიო/.test(desc) || /საკომისიო/.test(partner) && !pos) bankCat = 'ბანკის საკომისიო';
   else if (/LDSB/.test(op)) bankCat = 'სესხის მიღება';
@@ -800,7 +836,7 @@ function parseTBCpdf(pages){
     else if (/^ძირითადი თანხის დაფარვა/.test(desc)) op = '*LPPR';
     else if (/^პროცენტის დაფარვა/.test(desc)) op = '*LPIN';
     else if (/^სიცოცხლის დაზღვევა/.test(desc)) op = '*INSP';
-    else if (/^სესხის გაცემა/.test(desc)) op = '*LDSB';
+      else if (/^სესხის გაცემა/.test(desc)) op = '*LDSB';
     else if (/^პირადი გადარიცხვა თიბისიში/.test(desc)) op = 'GMB';
     else if (/^პირადი გადარიცხვა$/.test(desc) && /თიბისი ბანკი/.test(partner)) op = 'P2P';
     else if (/^პირადი/.test(desc)) op = 'GMN';
@@ -1217,7 +1253,7 @@ function doMerge(id){
 function openTx(id){
   const t = state.tx.find(x => x.id === id); if (!t) return;
   const e = effCat(t);
-  const srcTxt = e.src === 'manual' ? 'ხელით მინიჭებული' : e.src === 'rule' ? 'წესით' : e.src === 'auto' ? 'ავტომატურად: გადარიცხვა შენს ანგარიშზე / კონვერტაცია' : 'კატეგორია არ აქვს';
+  const srcTxt = e.src === 'manual' ? 'ხელით მინიჭებული' : e.src === 'rule' ? 'წესით' : e.src === 'auto' ? 'ავტომატურად: გადარიცხვა შენს ანგარიშზე / კონვერტაცია' : e.src === 'name' ? `ავტომატურად: ბანკის კატეგორია „${t.bankCat}“ → გეგმის სტრიქონი` : 'კატეგორია არ აქვს';
   const btn = (cid, label, extra) => `<button class="cbtn ${extra || ''} ${e.cat === cid || (cid === '__none' && !e.cat && e.src) ? 'cur' : ''}" data-act="setcat" data-id="${esc(t.id)}" data-cat="${cid}">${esc(label)}</button>`;
   let h = `<div class="grab"></div><h3>${esc(t.merchant)}</h3>
     <div class="small t2"><b class="num ${t.amt > 0 ? 'pos' : ''}">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)} ${t.cur}</b> · ${fmtDate(t.date)} ${t.date.slice(0, 4)} · ${t.bank === 'TBC' ? 'TBC' : 'საქართველოს ბანკი'} ${maskIban(t.acct)}</div>
@@ -1235,7 +1271,8 @@ function openTx(id){
     h += `<div class="ghead">${g[0] === 'income' ? 'შემოსავლები' : 'ხარჯები'}</div><div class="cgrid">${items.map(it => btn(it.id, it.name || '(უსახელო)')).join('')}</div>`;
   }
   h += `<div class="ghead">სხვა</div><div class="cgrid">${btn('__internal', 'შიდა გადარიცხვა (არ ჩაითვალოს)', 'special')}${btn('__none', 'გეგმის გარეშე', 'special')}</div>
-    <p class="small muted">კატეგორია, რომელიც აქ არ არის, ჯერ „გეგმაში“ დაამატე.</p>
+    <button class="btn block" data-act="newcat" data-id="${esc(t.id)}">+ ახალი კატეგორია</button>
+    <p class="small muted">ახალი კატეგორია გეგმაში ${t.amt > 0 ? '„შემოსავლებში“' : '„ცვლად ხარჯებში“'} დაემატება (ბიუჯეტი 0 ₾). თანხას გეგმაში შეცვლი.</p>
     ${t.cat ? `<button class="btn block" data-act="clearcat" data-id="${esc(t.id)}">ხელით მინიჭების გაუქმება</button>` : ''}`;
   openSheet(h);
 }
@@ -1426,6 +1463,14 @@ function onAct(e){
   if (a === 'unmerge') { const m = state.merges.find(g => g.id === b.dataset.id); if (!m || !confirm(`„${m.name}“ — გაერთიანება გაუქმდეს?`)) return; state.merges = state.merges.filter(g => g.id !== m.id); save(); ui.keepScroll = true; render(); return; }
   if (a === 'theme') { state.settings.theme = b.dataset.v; applyTheme(); save(); ui.keepScroll = true; render(); return; }
   if (a === 'setcat') { setCat(b.dataset.id, b.dataset.cat); return; }
+  if (a === 'newcat') {
+    const t = state.tx.find(x => x.id === b.dataset.id); if (!t) return;
+    const name = (prompt('ახალი კატეგორიის სახელი:', '') || '').trim(); if (!name) return;
+    const kind = t.amt > 0 ? 'income' : 'variable', nid = uid();
+    state[kind].push(kind === 'income' ? { id: nid, name, amount: 0, cur: 'GEL', repeat: true, byMonth: {}, start: '', end: '', uncertain: false }
+                                       : { id: nid, name, amount: 0, cur: 'GEL', repeat: true, byMonth: {} });
+    refreshIndex(); setCat(t.id, nid); return;
+  }
   if (a === 'clearcat') { const t = state.tx.find(x => x.id === b.dataset.id); if (t) delete t.cat; save(); closeSheet(); ui.keepScroll = true; render(); return; }
   if (a === 'add') { const sec = SECTIONS.find(s => s.key === b.dataset.list); state[sec.key].push(sec.add()); ui.openSec[sec.key] = true; save(); ui.keepScroll = true; render();
     const inp = main.querySelector(`details[data-sec="${sec.key}"] .item:last-of-type input`); if (inp) inp.focus(); return; }
