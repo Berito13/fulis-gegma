@@ -68,6 +68,9 @@ button,input,select{font:inherit;color:inherit}
   .appbar{padding-top:calc(12px + env(safe-area-inset-top))}
   /* iPhone zooms into any input with text smaller than 16px — keep inputs at 16px on phones */
   .in,.item .r2 .in,.mgrid .in{font-size:16px}
+  /* one height for every field on a phone, whatever control iOS draws */
+  input.in:not([type="checkbox"]):not([type="radio"]),select.in{height:42px;min-height:42px}
+  .item .r2 input.in,.item .r2 select.in,.mgrid input.in{height:36px;min-height:36px}
 }
 
 .appbar{padding:16px 16px 10px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex:none}
@@ -198,6 +201,13 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 .in:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 .in.n{text-align:right;font-variant-numeric:tabular-nums}
 select.in{padding:6px 4px}
+/* iPhone draws date/month fields at their own size and ignores the cell width — force them to obey the layout */
+input[type="month"].in{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;display:block;text-align:left;line-height:1.3;min-height:36px}
+input[type="month"].in::-webkit-date-and-time-value{text-align:left;min-height:1.3em}
+input[type="month"].in::-webkit-calendar-picker-indicator{margin-left:auto}
+.f2 > *,label.f,label.f > *{min-width:0}
+label.f > .in{width:100%;max-width:100%}
+.item .r2 input[type="month"].in{display:inline-block;width:9.5em;min-height:32px}
 textarea.nm-in{resize:none;overflow:hidden;display:block;line-height:1.35;font-family:inherit;min-height:34px;field-sizing:content}
 .del{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:5px;border-radius:7px}
 .del:hover{background:var(--bad-bg);color:var(--neg)}
@@ -1004,8 +1014,8 @@ function updatePlanSums(){
 function viewMore(R){
   const S = state.settings;
   let h = `<div class="card"><h2>გეგმის პარამეტრები</h2><div class="f2">
-    <label class="f">საწყისი თვე<input class="in" type="month" data-list="settings" data-field="start" value="${esc(S.start)}"></label>
-    <label class="f">ჰორიზონტი<select class="in" data-list="settings" data-field="horizon" data-type="num">${[6, 12, 18, 24, 36].map(n => `<option value="${n}"${+S.horizon === n ? ' selected' : ''}>${n} თვე</option>`).join('')}</select></label>
+    <label class="f" style="grid-column:1/-1">საწყისი თვე<input class="in" type="month" data-list="settings" data-field="start" value="${esc(S.start)}"></label>
+    <label class="f" style="grid-column:1/-1">ჰორიზონტი<select class="in" data-list="settings" data-field="horizon" data-type="num">${[6, 12, 18, 24, 36].map(n => `<option value="${n}"${+S.horizon === n ? ' selected' : ''}>${n} თვე</option>`).join('')}</select></label>
     <label class="f">საწყისი ნაშთი, ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="opening" data-type="num" value="${S.opening ?? ''}"></label>
     <label class="f">მინ. ბუფერი, ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="buffer" data-type="num" value="${S.buffer ?? ''}"></label>
     <label class="f">1 USD = ? ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="usdRate" data-type="num" value="${S.usdRate ?? ''}"></label>
