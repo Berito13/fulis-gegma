@@ -108,6 +108,15 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 .cat .top{display:flex;align-items:flex-start;gap:10px}
 .cat .nm{flex:1;min-width:0;overflow-wrap:anywhere}
 .cat .meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:6px;font-size:12px}
+.cat.click{cursor:pointer}
+.cat.click:active{opacity:.7}
+.cat .chev{color:var(--muted);margin-left:6px;font-size:16px;line-height:1}
+details.mer > summary{list-style:none;cursor:pointer}
+details.mer > summary::-webkit-details-marker{display:none}
+details.mer[open] > summary .nm{font-weight:600}
+.mtx{margin-top:8px;background:var(--surface-2);border-radius:10px;padding:2px 10px}
+.mtr{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)}
+.mtr:last-child{border-bottom:0}
 .cat .amt{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .cat .amt b{font-weight:700}
 .track{height:6px;background:var(--bar-track);border-radius:4px;margin-top:6px;overflow:hidden;display:flex}
@@ -233,7 +242,7 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--te
 .sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:30;display:flex;align-items:flex-end}
 .sheet-bg[hidden]{display:none}
 .sheet{width:100%;max-height:88%;overflow-y:auto;background:var(--surface);border-radius:20px 20px 0 0;padding:8px 16px calc(20px + env(safe-area-inset-bottom));animation:up .18s ease-out}
-@keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+@keyframes up{from{transform:translateY(40px)}to{transform:none}}
 .grab{width:40px;height:5px;border-radius:3px;background:var(--border-strong);margin:4px auto 10px}
 .sheet h3{margin:0 0 2px;font-size:16px}
 .sheet .det{font-size:11px;color:var(--muted);word-break:break-word;margin:6px 0 10px;background:var(--surface-2);border-radius:8px;padding:6px 8px}
@@ -302,7 +311,7 @@ function sample(){
   const R = (value, itemId) => ({ id: uid(), type: 'bankcat', value: value.toLowerCase(), itemId });
   return {
     version: 2,
-    settings: { start: idxToYm(s), horizon: 12, opening: 5000, buffer: 1500, usdRate: 2.7, eurRate: 3.1, scenario: 'base', varPct: 10, dropUncertain: true },
+    settings: { start: idxToYm(s), horizon: 12, opening: 5000, buffer: 1500, usdRate: 2.7, eurRate: 3.1, scenario: 'base', varPct: 10, dropUncertain: true, theme: 'auto' },
     income: [
       { id: sal, name: 'ხელფასი', amount: 4500, cur: 'GEL', repeat: true, byMonth: {}, start: '', end: '', uncertain: false }
     ],
@@ -384,6 +393,16 @@ function save(){
 if (firstRun) save();
 
 const ui = { tab: 'home', month: null, txFilter: 'all', openSec: {} };
+
+// theme: 'auto' follows the phone, 'light' / 'dark' are fixed (CSS reads <html data-theme>)
+function applyTheme(){
+  const t = state.settings.theme, root = document.documentElement;
+  if (t === 'light' || t === 'dark') root.dataset.theme = t; else delete root.dataset.theme;
+  const dark = t === 'dark' || (t !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', dark ? '#1a1a19' : '#fcfcfb');
+}
+applyTheme();
+if (window.matchMedia) { const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', applyTheme) : mq.addListener(applyTheme)); }
 
 /* =================== plan model =================== */
 const rateOf = cur => cur === 'USD' ? (+state.settings.usdRate || 0) : cur === 'EUR' ? (+state.settings.eurRate || 0) : 1;
@@ -762,12 +781,12 @@ function viewHome(R){
     h += `<div class="card"><h2>ხარჯები კატეგორიებით<span class="r">ფაქტი / გეგმა, ₾</span></h2>`;
     if (f && f.unOut > 0.5) h += catRow('გეგმის გარეშე (კატეგორია არ აქვს)', f.unOut, 0, true, f.unc);
     if (!rows.length) h += `<div class="empty">ამ თვეზე ხარჯი არ არის დაგეგმილი.</div>`;
-    for (const r of rows) h += catRow(r.it.name || '(უსახელო)', r.fact, r.plan, false, 0, !f);
+    for (const r of rows) h += catRow(r.it.name || '(უსახელო)', r.fact, r.plan, false, 0, !f, r.it.id);
     h += `</div>`;
     const inc = state.income.map(it => ({ it, plan: pv(it.id), fact: f ? (f.byItem[it.id] || 0) : 0 })).filter(r => r.plan > 0.5 || Math.abs(r.fact) > 0.5);
     if (inc.length || (f && f.unIn > 0.5)) {
       h += `<div class="card"><h2>შემოსავლები<span class="r">ფაქტი / გეგმა, ₾</span></h2>`;
-      for (const r of inc) h += incRow(r.it.name || '(უსახელო)', r.fact, r.plan, !f);
+      for (const r of inc) h += incRow(r.it.name || '(უსახელო)', r.fact, r.plan, !f, r.it.id);
       if (f && f.unIn > 0.5) h += `<div class="cat"><div class="top"><span class="nm">კატეგორიის გარეშე შემოსული</span><span class="amt"><b>${fmt(f.unIn)}</b></span></div></div>`;
       h += `</div>`;
     }
@@ -795,7 +814,7 @@ function viewHome(R){
   h += `</div>`;
   return h;
 }
-function catRow(name, fact, plan, unplanned, uncN, noFact){
+function catRow(name, fact, plan, unplanned, uncN, noFact, id){
   let bar = '', flag = '';
   if (unplanned) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">${uncN} ტრანზ.</span>`; }
   else if (noFact) { bar = ''; }
@@ -806,14 +825,16 @@ function catRow(name, fact, plan, unplanned, uncN, noFact){
     else bar = `<i style="width:${Math.max(0, p * 100)}%"></i>`;
   }
   const meta = flag || unplanned ? `<div class="meta">${flag}${unplanned ? '<span class="link">მიანიჭე კატეგორია →</span>' : ''}</div>` : '';
-  return `<div class="cat" ${unplanned ? 'data-act="go-unc" style="cursor:pointer"' : ''}><div class="top"><span class="nm">${esc(name)}</span>
-    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b>`}${unplanned ? '' : (noFact ? '' : ' / ') + fmt(plan)}</span></div><div class="track">${bar}</div>${meta}</div>`;
+  const click = id && !noFact && Math.abs(fact) > 0.5;   // tap → where the money went (by store)
+  return `<div class="cat ${click || unplanned ? 'click' : ''}" ${unplanned ? 'data-act="go-unc"' : click ? `data-act="cat" data-id="${id}"` : ''}><div class="top"><span class="nm">${esc(name)}</span>
+    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b>`}${unplanned ? '' : (noFact ? '' : ' / ') + fmt(plan)}${click ? '<span class="chev">›</span>' : ''}</span></div><div class="track">${bar}</div>${meta}</div>`;
 }
-function incRow(name, fact, plan, noFact){
+function incRow(name, fact, plan, noFact, id){
   const p = plan > 0 ? Math.min(1, fact / plan) : 1;
   const short = !noFact && plan > 0.5 && fact < plan - 0.5;
-  return `<div class="cat"><div class="top"><span class="nm">${esc(name)}</span>
-    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b> / `}${fmt(plan)}</span></div>${noFact ? '' : `<div class="track"><i style="width:${p * 100}%;background:var(--pos)"></i></div>`}
+  const click = id && !noFact && Math.abs(fact) > 0.5;
+  return `<div class="cat ${click ? 'click' : ''}" ${click ? `data-act="cat" data-id="${id}"` : ''}><div class="top"><span class="nm">${esc(name)}</span>
+    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b> / `}${fmt(plan)}${click ? '<span class="chev">›</span>' : ''}</span></div>${noFact ? '' : `<div class="track"><i style="width:${p * 100}%;background:var(--pos)"></i></div>`}
     ${short ? `<div class="meta"><span class="flag over">გეგმაზე ნაკლები: −${fmt(plan - fact)}</span></div>` : ''}</div>`;
 }
 
@@ -891,6 +912,50 @@ function viewTx(R){
       <div class="rt"><div class="a ${t.amt > 0 ? 'pos' : ''}">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)}${t.cur !== 'GEL' ? ' ' + t.cur : ''}</div>${chip}</div></div>`;
   }
   return h;
+}
+// where the money of one plan line went in the selected month: per store, with visits, share and change vs previous month
+function openCat(id){
+  const x = IDX.get(id); if (!x) return;
+  const i = ui.month, sign = x.kind === 'income' ? 1 : -1;
+  const keyOf = t => (t.merchant || '').trim().toLowerCase() || '—';
+  const group = m => {
+    const g = new Map();
+    for (const t of state.tx) {
+      if (ymToIdx(t.date) !== m || effCat(t).cat !== id) continue;
+      let o = g.get(keyOf(t)); if (!o) { o = { name: t.merchant || '—', sum: 0, n: 0, tx: [] }; g.set(keyOf(t), o); }
+      o.sum += sign * txGel(t); o.n++; o.tx.push(t);
+    }
+    return g;
+  };
+  const cur = group(i), prev = group(i - 1);
+  const hasPrev = state.tx.some(t => ymToIdx(t.date) === i - 1);
+  const list = [...cur.values()].sort((a, b) => b.sum - a.sum);
+  const total = list.reduce((a, o) => a + o.sum, 0), nTx = list.reduce((a, o) => a + o.n, 0);
+  const prevTotal = [...prev.values()].reduce((a, o) => a + o.sum, 0);
+  const R = compute(), k = i - R.s0, plan = k >= 0 && k < R.H && R.byId[id] ? R.byId[id].v[k] : 0;
+  let h = `<div class="grab"></div><h3>${esc(x.it.name || '(უსახელო)')}</h3>
+    <div class="small t2">${mLong(i)} · ${nTx} ტრანზაქცია · ${list.length} მაღაზია / მიმღები</div>
+    <div class="trio" style="grid-template-columns:1fr auto;margin:10px 0 4px">
+      <span class="l">ფაქტი</span><span class="v">${money(total)}</span>
+      <span class="l">გეგმა</span><span class="v">${money(plan)}</span>
+      ${hasPrev ? `<span class="l">წინა თვე (${mShort(i - 1)})</span><span class="v">${money(prevTotal)}</span>` : ''}
+    </div><p class="small muted" style="margin:0 0 4px">შეეხე მაღაზიას მისი ტრანზაქციების სანახავად.</p>`;
+  for (const o of list) {
+    const p = prev.get(keyOf(o.tx[0]));
+    let cmp = '';
+    if (hasPrev) {
+      if (!p) cmp = '<span class="flag unpl">წინა თვეში არ იყო</span>';
+      else { const d = o.sum - p.sum; if (Math.abs(d) >= 0.5) cmp = `<span class="${sign < 0 ? (d > 0 ? 'neg' : 'pos') : (d > 0 ? 'pos' : 'neg')}">${d > 0 ? '+' : '−'}${fmt(Math.abs(d))} ₾ წინა თვესთან</span>`; }
+    }
+    const share = total > 0 ? Math.max(0, o.sum / total * 100) : 0;
+    h += `<details class="cat mer"><summary><div class="top"><span class="nm">${esc(o.name)}</span><span class="amt"><b>${fmt2(o.sum)}</b> ₾</span></div>
+      <div class="track"><i style="width:${share}%"></i></div>
+      <div class="meta"><span class="muted">${o.n}-ჯერ · ${Math.round(share)}%</span>${cmp}</div></summary>
+      <div class="mtx">${o.tx.sort((a, b) => a.date.localeCompare(b.date)).map(t => `<div class="mtr" data-act="tx" data-id="${esc(t.id)}"><span>${fmtDate(t.date)}${t.card ? ' · ••' + esc(t.card.slice(-4)) : ''}</span><span class="num">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)}${t.cur !== 'GEL' ? ' ' + t.cur : ''}</span></div>`).join('')}</div></details>`;
+  }
+  if (!list.length) h += '<div class="empty">ამ თვეში ტრანზაქცია არ არის.</div>';
+  h += `<button class="btn block" data-act="close" style="margin-top:12px">დახურვა</button>`;
+  openSheet(h);
 }
 function openTx(id){
   const t = state.tx.find(x => x.id === id); if (!t) return;
@@ -1013,7 +1078,11 @@ function updatePlanSums(){
 /* ---------- settings ---------- */
 function viewMore(R){
   const S = state.settings;
-  let h = `<div class="card"><h2>გეგმის პარამეტრები</h2><div class="f2">
+  const th = S.theme || 'auto';
+  let h = `<div class="card"><h2>გარეგნობა</h2>
+    <div class="seg" style="margin:0"><button data-act="theme" data-v="auto" class="${th === 'auto' ? 'on' : ''}">ავტომატური</button><button data-act="theme" data-v="light" class="${th === 'light' ? 'on' : ''}">☀ ღია</button><button data-act="theme" data-v="dark" class="${th === 'dark' ? 'on' : ''}">☾ ბნელი</button></div>
+    <p class="small muted" style="margin:8px 0 0">„ავტომატური“ ტელეფონის პარამეტრს მიჰყვება.</p></div>`;
+  h += `<div class="card"><h2>გეგმის პარამეტრები</h2><div class="f2">
     <label class="f" style="grid-column:1/-1">საწყისი თვე<input class="in" type="month" data-list="settings" data-field="start" value="${esc(S.start)}"></label>
     <label class="f" style="grid-column:1/-1">ჰორიზონტი<select class="in" data-list="settings" data-field="horizon" data-type="num">${[6, 12, 18, 24, 36].map(n => `<option value="${n}"${+S.horizon === n ? ' selected' : ''}>${n} თვე</option>`).join('')}</select></label>
     <label class="f">საწყისი ნაშთი, ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="opening" data-type="num" value="${S.opening ?? ''}"></label>
@@ -1083,6 +1152,8 @@ function onAct(e){
   if (a === 'pick') { ui.month = +b.dataset.m; ui.keepScroll = true; render(); return; }
   if (a === 'filt') { ui.txFilter = b.dataset.v; ui.keepScroll = true; render(); return; }
   if (a === 'tx') { openTx(b.dataset.id); return; }
+  if (a === 'cat') { openCat(b.dataset.id); return; }
+  if (a === 'theme') { state.settings.theme = b.dataset.v; applyTheme(); save(); ui.keepScroll = true; render(); return; }
   if (a === 'setcat') { setCat(b.dataset.id, b.dataset.cat); return; }
   if (a === 'clearcat') { const t = state.tx.find(x => x.id === b.dataset.id); if (t) delete t.cat; save(); closeSheet(); ui.keepScroll = true; render(); return; }
   if (a === 'add') { const sec = SECTIONS.find(s => s.key === b.dataset.list); state[sec.key].push(sec.add()); ui.openSec[sec.key] = true; save(); ui.keepScroll = true; render();
