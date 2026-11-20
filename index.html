@@ -381,6 +381,12 @@ function normalize(st){
   for (const k of ['income', 'fixed', 'variable']) for (const it of out[k]) migrateItem(it, out.settings, k);
   // older imports: TBC card → loan account transfers were not labelled as loan repayment
   for (const t of out.tx) if (t.bank === 'TBC' && t.bankCat !== 'სესხის დაფარვა' && (t.op === 'LCOL' || /სესხის დაფარვა|თანხის ავტომატური შეგროვება/.test(t.desc || ''))) t.bankCat = 'სესხის დაფარვა';
+  // merges saved with the first store key: re-key them through the shops' names
+  for (const m of out.merges) if (m.kv !== 2) {
+    const keys = new Set(m.keys);
+    for (const t of out.tx) if (keys.has(normKeyV1(t.merchant))) keys.add(normKey(t.merchant));
+    m.keys = [...keys]; m.kv = 2;
+  }
   return out;
 }
 // older saves had one amount (+ "months"/"once" schedule for income); convert to repeat / per-month amounts
@@ -1167,21 +1173,29 @@ function drawChart(R){
 function catName(id){ if (id === '__internal') return 'შიდა გადარიცხვა'; const x = IDX.get(id); return x ? (x.it.name || '(უსახელო)') : ''; }
 function viewTx(R){
   const i = ui.month;
+  const isUnc = x => !x.e.cat && x.e.src === null;
+  // "without category" is a to-do list over ALL months (same number as the red badge); the other filters show the chosen month
+  const uncAll = state.tx.map(t => ({ t, e: effCat(t) })).filter(isUnc);
   let list = state.tx.filter(t => ymToIdx(t.date) === i).map(t => ({ t, e: effCat(t) }));
   const all = list.length;
-  const uncN = list.filter(x => !x.e.cat && x.e.src === null).length, intN = list.filter(x => x.e.cat === '__internal').length;
-  if (ui.txFilter === 'unc') list = list.filter(x => !x.e.cat && x.e.src === null);
+  const uncN = uncAll.length, intN = list.filter(x => x.e.cat === '__internal').length;
+  if (ui.txFilter === 'unc') list = uncAll;
   if (ui.txFilter === 'int') list = list.filter(x => x.e.cat === '__internal');
   list.sort((a, b) => b.t.date.localeCompare(a.t.date) || Math.abs(b.t.amt) - Math.abs(a.t.amt));
   let inS = 0, outS = 0; for (const x of state.tx) if (ymToIdx(x.date) === i && effCat(x).cat !== '__internal') { const a = txGel(x); if (a > 0) inS += a; else outS -= a; }
   let h = `<div class="drop" id="drop"><b>ამონაწერის ჩატვირთვა</b><p>TBC ან საქართველოს ბანკის ამონაწერი — Excel (xlsx) ან PDF, რამდენიმე ფაილიც ერთად. ფაილი მხოლოდ ამ მოწყობილობაზე მუშავდება.</p>
     <button class="btn primary" data-act="import">ფაილის არჩევა</button></div>`;
+  list.sort((a, b) => b.t.date.localeCompare(a.t.date) || Math.abs(b.t.amt) - Math.abs(a.t.amt));
   h += `<div class="seg"><button data-act="filt" data-v="all" class="${ui.txFilter === 'all' ? 'on' : ''}">ყველა ${all}</button><button data-act="filt" data-v="unc" class="${ui.txFilter === 'unc' ? 'on' : ''}">კატეგ. გარეშე ${uncN}</button><button data-act="filt" data-v="int" class="${ui.txFilter === 'int' ? 'on' : ''}">შიდა ${intN}</button></div>`;
-  if (all) h += `<p class="small t2" style="margin:0 4px 4px">შემოვიდა <b class="pos num">${fmt(inS)} ₾</b> · გავიდა <b class="neg num">${fmt(outS)} ₾</b> <span class="muted">(შიდა გადარიცხვების გარეშე)</span></p>`;
-  if (!list.length) h += `<div class="empty">${all ? 'ამ ფილტრით ტრანზაქცია არ არის.' : `${mLong(i)}-ის ტრანზაქციები არ არის ჩატვირთული.`}</div>`;
+  if (ui.txFilter === 'unc') {
+    const byM = {}; for (const x of uncAll) { const m = ymToIdx(x.t.date); byM[m] = (byM[m] || 0) + 1; }
+    const parts = Object.keys(byM).map(Number).sort((a, b) => b - a).map(m => `${MNL[m % 12]} ${byM[m]}`);
+    h += `<p class="small t2" style="margin:0 4px 4px">${uncN ? `<b>${uncN}</b> ტრანზაქციას კატეგორია არ აქვს, ყველა თვეში: ${parts.join(' · ')}` : 'ყველა ტრანზაქციას კატეგორია აქვს ✓'}</p>`;
+  } else if (all) h += `<p class="small t2" style="margin:0 4px 4px">${mLong(i)}: შემოვიდა <b class="pos num">${fmt(inS)} ₾</b> · გავიდა <b class="neg num">${fmt(outS)} ₾</b> <span class="muted">(შიდა გადარიცხვების გარეშე)</span></p>`;
+  if (!list.length && ui.txFilter !== 'unc') h += `<div class="empty">${all ? 'ამ ფილტრით ტრანზაქცია არ არის.' : `${mLong(i)}-ის ტრანზაქციები არ არის ჩატვირთული.`}</div>`;
   let day = '';
   for (const { t, e } of list) {
-    if (t.date !== day) { day = t.date; h += `<div class="day">${fmtDate(day)}</div>`; }
+    if (t.date !== day) { day = t.date; h += `<div class="day">${fmtDate(day)}${ui.txFilter === 'unc' ? ' ' + day.slice(0, 4) : ''}</div>`; }
     const chip = e.cat === '__internal' ? `<span class="chipc int">შიდა გადარიცხვა</span>` : e.cat ? `<span class="chipc">${esc(catName(e.cat))}</span>` : `<span class="chipc none">${e.src === 'manual' || e.src === 'rule' ? 'გეგმის გარეშე' : 'კატეგორია?'}</span>`;
     const acc = state.accounts[t.acct];
     h += `<div class="tx ${e.cat === '__internal' ? 'internal' : ''}" data-act="tx" data-id="${esc(t.id)}"><div class="ic ${t.bank}">${t.bank === 'TBC' ? 'TBC' : 'BoG'}</div>
@@ -1192,10 +1206,25 @@ function viewTx(R){
 }
 /* ---------- stores: the same shop under different bank names ---------- */
 // automatic: "FLT*Glovoapp", "LTD X", "Pharmadepot-36" → one key (prefixes, branch numbers and punctuation dropped)
-const normKey = s => {
+// first version of the key — kept only to carry over merges saved before the smarter key below
+const normKeyV1 = s => {
   let k = (s || '').toLowerCase().trim(), prev;
   do { prev = k; k = k.replace(/^(flt\s*\*|ltd\.?\s+|llc\s+|shps\s+|შპს\s*|ი\/მ\s*|pos\s+)/, '').trim(); } while (k !== prev);
   k = k.replace(/[\s\-#№]*\d+$/, '').replace(/[^0-9a-zა-ჰ]+/g, '');
+  return k || '—';
+};
+// Georgian letters → Latin, digits → Georgian number words, and spelling variants folded together,
+// so "FLT*2nabiji", "Ori Nabiji" and "შპს ორი ნაბიჯი" all give the same key "orinabiji"
+const GEO_LAT = {'ა':'a','ბ':'b','გ':'g','დ':'d','ე':'e','ვ':'v','ზ':'z','თ':'t','ი':'i','კ':'k','ლ':'l','მ':'m','ნ':'n','ო':'o','პ':'p','ჟ':'zh','რ':'r','ს':'s','ტ':'t','უ':'u','ფ':'p','ქ':'k','ღ':'gh','ყ':'q','შ':'sh','ჩ':'ch','ც':'ts','ძ':'dz','წ':'ts','ჭ':'ch','ხ':'kh','ჯ':'j','ჰ':'h'};
+const NUM_WORD = {'1':'erti','2':'ori','3':'sami','4':'otxi','5':'xuti','6':'ekvsi','7':'svidi','8':'rva','9':'cxra','10':'ati'};
+const normKey = s => {
+  let k = (s || '').toLowerCase().trim(), prev;
+  do { prev = k; k = k.replace(/^(flt\s*\*|ltd\.?\s+|llc\s+|shps\s+|შპს\s*|ი\/მ\s*|სს\s+|pos\s+)/, '').trim(); } while (k !== prev);
+  k = k.replace(/[\s\-#№]*\d+$/, '');                                    // branch numbers at the end ("Pharmadepot-36")
+  k = [...k].map(c => GEO_LAT[c] ?? c).join('');
+  k = k.replace(/(^|[^0-9])(10|[1-9])(?=\s*[a-z])/g, (m, p, d) => p + NUM_WORD[d]);   // "2nabiji" → "orinabiji"
+  k = k.replace(/kh/g, 'x').replace(/ts|tz/g, 'c').replace(/ch/g, 'c').replace(/sh/g, 's').replace(/zh/g, 'z').replace(/gh/g, 'g').replace(/dz/g, 'z').replace(/ph/g, 'p').replace(/th/g, 't').replace(/q/g, 'k');
+  k = k.replace(/[^0-9a-z]+/g, '');
   return k || '—';
 };
 // manual: groups the user merged (state.merges = [{id, name, keys:[normKey…]}])
@@ -1276,7 +1305,7 @@ function doMerge(id){
   const name = prompt('გაერთიანებული მაღაზიის სახელი:', biggest.name);
   if (name === null) return;
   state.merges = state.merges.filter(m => !oldIds.has(m.id));
-  state.merges.push({ id: uid(), name: name.trim() || biggest.name, keys: [...keys] });
+  state.merges.push({ id: uid(), name: name.trim() || biggest.name, keys: [...keys], kv: 2 });
   save(); toast(`გაერთიანდა: ${groups.length} სახელი → „${name.trim() || biggest.name}“`);
   openCat(id);
 }
