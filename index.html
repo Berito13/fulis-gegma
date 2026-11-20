@@ -279,7 +279,7 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--te
   </nav>
   <div class="sheet-bg" id="sheetBg" hidden><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast"></div>
-  <input type="file" id="fileIn" accept=".xlsx" multiple hidden>
+  <input type="file" id="fileIn" accept=".xlsx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
   <input type="file" id="backupIn" accept=".json,application/json" hidden>
 </div>
 <p class="desk-note">დესკტოპის რეჟიმი: აპლიკაცია ზუსტად ისე ჩანს, როგორც ტელეფონზე გამოჩნდება.</p>
@@ -606,30 +606,39 @@ function parseTBC(sheets){
     out.accounts.push({ iban: acct, bank: 'TBC', cur, from, to, startBal });
     for (let i = 2; i < sh.rows.length; i++) {
       const r = sh.rows[i]; const date = toDate(r[H['Date']]); if (!date) continue;
-      const out_ = toNum(r[H['Paid Out']]) || 0, in_ = toNum(r[H['Paid In']]) || 0;
-      const amt = Math.round((in_ - out_) * 100) / 100; if (!amt) continue;
-      const desc = S_(r[H['Description']]), info = S_(r[H['Additional Information']]), type = S_(r[H['Type']]);
-      const op = S_(r[H['Op. Code']]), partner = S_(r[H["Partner's Name"]]), pAcct = S_(r[H["Partner's Account"]]);
-      const txid = S_(r[H['Transaction ID']]);
-      let merchant = '', bankCat = type;
-      const pos = /^POS(?:\s+wallet)?\s*-\s*(.+?),\s*[\d.,]+\s+[A-Z]{3},\s*[^,]*,\s*([^,]+)/.exec(desc);
-      if (pos) {
-        merchant = pos[1].trim(); bankCat = pos[2].trim();
-        const mm = /MCC:\s*(\d{4})/.exec(desc); if (mm && MCC[mm[1]]) bankCat = MCC[mm[1]];
-      }
-      else if (/^\*?MBS/.test(op)) { merchant = desc.replace(/^საკომისიო:\s*/, '').split(';')[0].trim(); if (/^საკომისიო/.test(desc) || op === 'MBSFE') bankCat = 'ბანკის საკომისიო'; }
-      else if (!partner || GENERIC_PARTNER.test(partner)) merchant = desc.split(/[;,]/)[0].trim();
-      else merchant = partner.split(',')[0].trim();
-      if (/^\*?LP(PR|IN)/.test(op) || /^(ძირითადი თანხის|პროცენტის) დაფარვა/.test(desc)) bankCat = 'სესხის დაფარვა';
-      else if (/INSP/.test(op)) bankCat = 'სესხის დაზღვევა';
-      else if (/TPC/.test(op) || /^საკომისიო/.test(desc) || /საკომისიო/.test(partner) && !pos) bankCat = 'ბანკის საკომისიო';
-      else if (/LDSB/.test(op)) bankCat = 'სესხის მიღება';
-      else if (['GMB', 'GMN', 'P2P'].includes(op)) { bankCat = 'პირადი გადარიცხვა'; if (op === 'P2P') merchant = 'P2P გადარიცხვა'; }
-      else if (/ხელფას/.test(desc)) bankCat = 'ხელფასი';
-      out.tx.push({ id: 'TBC:' + acct + ':' + (txid || hash(date + amt + desc)), bank: 'TBC', acct, date, amt, cur, desc, info, merchant: merchant || desc.slice(0, 40), bankCat, partnerAcct: (IBAN_RE.exec(pAcct) || [])[0] || '', op, card: '' });
+      const t = buildTBC({ acct, cur, date, outA: toNum(r[H['Paid Out']]), inA: toNum(r[H['Paid In']]), bal: toNum(r[H['Balance']]),
+        desc: S_(r[H['Description']]), info: S_(r[H['Additional Information']]), type: S_(r[H['Type']]), op: S_(r[H['Op. Code']]),
+        partner: S_(r[H["Partner's Name"]]), pAcct: S_(r[H["Partner's Account"]]), txid: S_(r[H['Transaction ID']]) });
+      if (t) out.tx.push(t);
     }
   }
   return out;
+}
+// one TBC transaction from either the Excel row or the PDF row (PDF has no type / op code / partner columns — they are inferred)
+function buildTBC(o){
+  const amt = Math.round(((o.inA || 0) - (o.outA || 0)) * 100) / 100; if (!amt) return null;
+  const desc = o.desc || '', op = o.op || '', partner = o.partner || '';
+  let merchant = '', bankCat = o.type || '';
+  const pos = /^POS(?:\s+wallet)?\s*-\s*(.+?),\s*[\d.,]+\s+[A-Z]{3},\s*[^,]*,\s*([^,]+)/.exec(desc);
+  if (pos) {
+    merchant = pos[1].trim(); bankCat = pos[2].trim();
+    const mm = /MCC:\s*(\d{4})/.exec(desc); if (mm && MCC[mm[1]]) bankCat = MCC[mm[1]];
+  }
+  else if (/^\*?MBS/.test(op)) { merchant = desc.replace(/^საკომისიო:\s*/, '').split(';')[0].trim(); if (/^საკომისიო/.test(desc) || op === 'MBSFE') bankCat = 'ბანკის საკომისიო'; }
+  else if (!partner || GENERIC_PARTNER.test(partner)) merchant = desc.split(/[;,]/)[0].trim();
+  else merchant = partner.split(',')[0].trim();
+  if (/^\*?LP(PR|IN)/.test(op) || /^(ძირითადი თანხის|პროცენტის) დაფარვა/.test(desc)) bankCat = 'სესხის დაფარვა';
+  else if (/INSP/.test(op)) bankCat = 'სესხის დაზღვევა';
+  else if (/TPC/.test(op) || /^საკომისიო/.test(desc) || /საკომისიო/.test(partner) && !pos) bankCat = 'ბანკის საკომისიო';
+  else if (/LDSB/.test(op)) bankCat = 'სესხის მიღება';
+  else if (['GMB', 'GMN', 'P2P'].includes(op)) { bankCat = 'პირადი გადარიცხვა'; if (op === 'P2P') merchant = 'P2P გადარიცხვა'; }
+  else if (/ხელფას/.test(desc)) bankCat = 'ხელფასი';
+  else if (/ხაზინის ერთიანი/.test(o.info || '')) bankCat = 'სახელმწიფო მომსახურება';
+  const id = o.txid ? 'TBC:' + o.acct + ':' + o.txid
+    : o.src === 'pdf' ? 'TBCP:' + o.acct + ':' + o.date + ':' + amt + ':' + (o.bal ?? '') + ':' + hash(desc.replace(/\s+/g, ''))
+    : 'TBC:' + o.acct + ':' + hash(o.date + amt + desc);
+  return { id, bank: 'TBC', acct: o.acct, date: o.date, amt, cur: o.cur || 'GEL', desc, info: o.info || '', merchant: merchant || desc.slice(0, 40), bankCat,
+    partnerAcct: (IBAN_RE.exec(o.pAcct || '') || [])[0] || '', op, card: '', bal: o.bal ?? null };
 }
 
 /* ---------- Bank of Georgia ---------- */
@@ -656,41 +665,203 @@ function parseBOG(sheets){
   for (let i = 1; i < txs.rows.length; i++) {
     const r = txs.rows[i]; const date = toDate(r[0]); if (!date) continue;
     const desc = S_(r[1]);
-    const type = desc.split(' - ')[0].trim();
-    const kv = {};
-    desc.split(';').forEach(part => { const j = part.indexOf(':'); if (j > 0) kv[part.slice(0, j).replace(/^.*\s-\s*/, '').trim()] = part.slice(j + 1).trim(); });
-    let merchant = (kv['ობიექტი'] || '').split(',')[0].trim() || kv['მიმღები'] || kv['გადმომრიცხავი'] || '';
-    const mcc = kv['MCC'] || '';
-    let bankCat = mcc ? (MCC[mcc] || 'MCC ' + mcc) : type;
-    if (/სესხის დაფარვა/.test(desc)) { bankCat = 'სესხის დაფარვა'; merchant = merchant || 'სესხის დაფარვა'; }
-    else if (type === 'გადარიცხვა') bankCat = 'პირადი გადარიცხვა';
-    else if (type === 'ჩარიცხვა') bankCat = /ხელფას/.test(kv['დანიშნულება'] || '') ? 'ხელფასი' : 'ჩარიცხვა';
-    else if (type === 'განაღდება') { bankCat = 'განაღდება'; merchant = 'განაღდება (ბანკომატი)'; }
-    else if (/საკომისიო/.test(type)) bankCat = 'ბანკის საკომისიო';
-    if (!merchant) merchant = type || desc.slice(0, 40);
-    const partnerAcct = (IBAN_RE.exec(kv['ანგარიში'] || '') || [])[0] || '';
     for (const ci of curCols) {
       const amt = toNum(r[ci]); if (!amt) continue;
       const cur = h[ci];
       const base = `BOG:${acct}:${date}:${cur}:${amt}:${hash(desc)}`;
       seen[base] = (seen[base] || 0) + 1;
-      out.tx.push({ id: base + '#' + seen[base], bank: 'BOG', acct, date, amt, cur, desc, info: '', merchant, bankCat, partnerAcct, op: type === 'კონვერტაცია' ? 'FX' : '', card: (kv['ბარათის No'] || '').replace(/\*/g, '') });
+      out.tx.push(Object.assign(buildBOG(desc), { id: base + '#' + seen[base], acct, date, amt, cur }));
     }
   }
   return out;
 }
+// merchant / bank category / partner account / card from a Bank of Georgia description ("key: value; key: value")
+function buildBOG(desc){
+  const type = desc.split(' - ')[0].trim();
+  const kv = {};
+  desc.split(';').forEach(part => { const j = part.indexOf(':'); if (j > 0) kv[part.slice(0, j).replace(/^.*\s-\s*/, '').trim()] = part.slice(j + 1).trim(); });
+  let merchant = (kv['ობიექტი'] || '').split(',')[0].trim() || kv['მიმღები'] || kv['გადმომრიცხავი'] || '';
+  const mcc = kv['MCC'] || '';
+  let bankCat = mcc ? (MCC[mcc] || 'MCC ' + mcc) : type;
+  if (/სესხის დაფარვა/.test(desc)) { bankCat = 'სესხის დაფარვა'; merchant = merchant || 'სესხის დაფარვა'; }
+  else if (type === 'გადარიცხვა') bankCat = 'პირადი გადარიცხვა';
+  else if (type === 'ჩარიცხვა') bankCat = /ხელფას/.test(kv['დანიშნულება'] || '') ? 'ხელფასი' : (mcc ? bankCat : 'ჩარიცხვა');
+  else if (type === 'განაღდება') { bankCat = 'განაღდება'; merchant = 'განაღდება (ბანკომატი)'; }
+  else if (/საკომისიო/.test(type)) bankCat = 'ბანკის საკომისიო';
+  if (!merchant && /ავტობუსი|მიკროავტობუსი|მეტრო/.test(desc)) { merchant = 'საზოგადოებრივი ტრანსპორტი'; bankCat = 'ტრანსპორტი'; }
+  if (!merchant) merchant = type || desc.slice(0, 40);
+  return { bank: 'BOG', desc, info: '', merchant, bankCat, partnerAcct: (IBAN_RE.exec(kv['ანგარიში'] || '') || [])[0] || '',
+    op: type === 'კონვერტაცია' ? 'FX' : '', card: (kv['ბარათის No'] || '').replace(/[^\d]/g, '') };
+}
+
+/* ---------- PDF statements (TBC & Bank of Georgia) — read in the browser with pdf.js, nothing is uploaded ---------- */
+const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+let pdfjsReady = null;
+function loadPdfJs(){
+  if (pdfjsReady) return pdfjsReady;
+  pdfjsReady = (async () => {
+    if (!window.pdfjsLib) await new Promise((res, rej) => { const s = document.createElement('script'); s.src = PDFJS_BASE + 'pdf.min.js'; s.crossOrigin = 'anonymous'; s.onload = res; s.onerror = () => rej(new Error('PDF-ის წამკითხველი ვერ ჩაიტვირთა — პირველ ჯერზე ინტერნეტი სჭირდება')); document.head.appendChild(s); });
+    const w = await fetch(PDFJS_BASE + 'pdf.worker.min.js', { mode: 'cors' }).then(r => { if (!r.ok) throw new Error('PDF-ის წამკითხველი ვერ ჩაიტვირთა'); return r.text(); });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([w], { type: 'text/javascript' }));
+    return window.pdfjsLib;
+  })();
+  pdfjsReady.catch(() => { pdfjsReady = null; });
+  return pdfjsReady;
+}
+async function readPdf(buf){
+  const lib = await loadPdfJs();
+  const doc = await lib.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
+  const pages = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const tc = await (await doc.getPage(p)).getTextContent();
+    pages.push(tc.items.filter(it => it.str && it.str.trim()).map(it => ({ s: it.str, x: it.transform[4], y: it.transform[5], w: it.width || 0 })));
+  }
+  return pages;
+}
+// group text pieces into lines (top → bottom) and join each line left → right
+function pdfLines(items){
+  const lines = [];
+  for (const it of items.slice().sort((a, b) => b.y - a.y || a.x - b.x)) {
+    let L = lines.find(l => Math.abs(l.y - it.y) < 2.5); if (!L) { L = { y: it.y, items: [] }; lines.push(L); } L.items.push(it);
+  }
+  return lines.sort((a, b) => b.y - a.y).map(L => {
+    L.items.sort((a, b) => a.x - b.x); let t = '', end = null;
+    for (const it of L.items) { if (end != null && it.x - end > 1 && !/\s$/.test(t) && !/^\s/.test(it.s)) t += ' '; t += it.s; end = it.x + it.w; }
+    return { y: L.y, text: t.replace(/\s+/g, ' ').trim() };
+  });
+}
+const PDF_NUM = /^-?\d[\d,]*(\.\d+)?$/;
+const PDF_DATE = /^\d{2}\/\d{2}\/\d{4}$/;
+// table rows across pages. cfg: { text: [{key, label}], amounts: [{key, label}] } — header labels are matched by prefix.
+// A row starts at a date in the first column; any other word there ("ნაშთი", totals) ends the row. Lines above the first
+// row on a page continue the last row of the previous page.
+function pdfTable(pages, cfg){
+  const rows = []; let last = null; let pageNo = 0;
+  for (const items of pages) {
+    pageNo++;
+    const hd = items.filter(it => it.s.trim() === 'თარიღი').find(h => items.some(o => o !== h && Math.abs(o.y - h.y) < 12 && o.s.trim().startsWith(cfg.text[0].label)));
+    if (!hd) continue;
+    const near = label => items.filter(o => Math.abs(o.y - hd.y) < 14 && o.s.trim().startsWith(label)).sort((a, b) => Math.abs(a.y - hd.y) - Math.abs(b.y - hd.y))[0];
+    const tcols = cfg.text.map(c => ({ ...c, h: near(c.label) })), acols = cfg.amounts.map(c => ({ ...c, h: near(c.label) })).filter(c => c.h);
+    if (!tcols[0].h || !acols.length) continue;
+    const cx = it => it.x + it.w / 2;
+    // date column ends just right of its header ("თარიღი"); description text may start far left of its centred header
+    const dateEdge = Math.min(hd.x + hd.w + 8, (cx(hd) + cx(tcols[0].h)) / 2);
+    const zone = Math.min(...acols.map(c => c.h.x)) - 25;
+    const footer = items.filter(it => /^\d+\s*-\s*\d+$|^გვ\.|კონფიდენციალური/.test(it.s.trim())).reduce((m, it) => Math.max(m, it.y), -1e9);
+    // header block: the labels plus their second line ("გასული / თანხა") — never part of a row
+    const headerSet = new Set([hd, ...tcols.map(c => c.h), ...acols.map(c => c.h)].filter(Boolean));
+    for (const it of items) if (it.s.trim() === 'თანხა' && it.y < hd.y && hd.y - it.y < 16) headerSet.add(it);
+    const body = items.filter(it => it.y < hd.y - 4 && it.y > footer + 2 && !headerSet.has(it));
+    // left edge of every text column after the first (smallest x of text sitting right of the midpoint between headers)
+    const edges = tcols.slice(1).map((c, i) => { const mid = (cx(tcols[i].h) + cx(c.h)) / 2; const xs = body.filter(it => it.x > mid && it.x < zone && !PDF_NUM.test(it.s.trim())).map(it => it.x); return xs.length ? Math.min(...xs) - 3 : mid; });
+    const anchors = body.filter(it => it.x < dateEdge).sort((a, b) => b.y - a.y);
+    for (const it of body) {
+      if (anchors.includes(it)) continue;
+      const a = anchors.filter(an => an.y >= it.y - 3).slice(-1)[0];
+      let row;
+      if (!a) row = last;                                         // continuation from previous page
+      else if (!PDF_DATE.test(a.s.trim())) continue;               // "ნაშთი" / totals line
+      else { row = a.row || (a.row = { date: a.s.trim(), text: {}, nums: {} }); }
+      if (!row) continue;
+      const t = it.s.trim();
+      if (PDF_NUM.test(t) && it.x >= zone) {
+        const c = acols.slice().sort((p, q) => Math.abs(cx(p.h) - cx(it)) - Math.abs(cx(q.h) - cx(it)))[0];
+        row.nums[c.key] = toNum(t);
+      } else {
+        let k = 0; while (k < edges.length && it.x >= edges[k]) k++;
+        // later pages sit "below" earlier ones, so a row continued on the next page keeps its reading order
+        (row.text[tcols[k].key] = row.text[tcols[k].key] || []).push({ ...it, y: it.y - pageNo * 100000 });
+      }
+    }
+    for (const a of anchors) if (a.row) { rows.push(a.row); last = a.row; }
+  }
+  for (const r of rows) for (const k in r.text) r.text[k] = pdfLines(r.text[k]).map(l => l.text).join(' ');
+  return rows;
+}
+const pdfPageText = items => pdfLines(items).map(l => l.text);
+function parseTBCpdf(pages){
+  const head = pdfPageText(pages[0] || []); const all = head.join('\n');
+  if (!/ამონაწერი ანგარიშიდან/.test(all)) return null;
+  const acct = (all.match(/GE\d{2}TB\d{16}/) || [])[0]; if (!acct) return null;
+  const per = all.match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/);
+  const numAfter = re => { const l = head.find(x => re.test(x)); const m = l && l.replace(re, '').match(/-?\d[\d,]*\.\d+/); return m ? toNum(m[0]) : null; };
+  const startBal = numAfter(/საწყისი ნაშთი/), endBal = numAfter(/საბოლოო ნაშთი/);
+  const rows = pdfTable(pages, { text: [{ key: 'desc', label: 'დანიშნულება' }, { key: 'info', label: 'დამატებითი' }], amounts: [{ key: 'out', label: 'გასული' }, { key: 'in', label: 'შემოსული' }, { key: 'bal', label: 'ბალანსი' }] });
+  const out = { bank: 'TBC', accounts: [{ iban: acct, bank: 'TBC', cur: 'GEL', from: per && toDate(per[1]), to: per && toDate(per[2]), startBal }], tx: [] };
+  for (const r of rows) {
+    const desc = r.text.desc || '', info = r.text.info || '', partner = info.split(',')[0].trim();
+    let op = '', type = (r.nums.in || 0) > 0 ? 'შემოსავალი' : 'სხვა ხარჯები';
+    if (/^კონვერტაცია/.test(desc)) op = 'FX';
+    else if (/^(თანხის ავტომატური შეგროვება|სესხის დაფარვა\.)/.test(desc)) op = 'LCOL';
+    else if (/^საკომისიო:/.test(desc)) op = 'MBSFE';
+    else if (/;\s*თანხა:/.test(desc)) { op = '*MBS*'; type = 'კომუნალური, მობილური, ჯარიმები'; }
+    else if (/^ნაკრების საკომისიო/.test(desc)) op = '*TPC*';
+    else if (/^ძირითადი თანხის დაფარვა/.test(desc)) op = '*LPPR';
+    else if (/^პროცენტის დაფარვა/.test(desc)) op = '*LPIN';
+    else if (/^სიცოცხლის დაზღვევა/.test(desc)) op = '*INSP';
+    else if (/^სესხის გაცემა/.test(desc)) op = '*LDSB';
+    else if (/^პირადი გადარიცხვა თიბისიში/.test(desc)) op = 'GMB';
+    else if (/^პირადი გადარიცხვა$/.test(desc) && /თიბისი ბანკი/.test(partner)) op = 'P2P';
+    else if (/^პირადი/.test(desc)) op = 'GMN';
+    const t = buildTBC({ acct, cur: 'GEL', date: toDate(r.date), outA: r.nums.out, inA: r.nums.in, bal: r.nums.bal ?? null, desc, info, type, op, partner, pAcct: info, src: 'pdf' });
+    if (t) out.tx.push(t);
+  }
+  out.check = startBal != null && endBal != null ? { start: startBal, end: endBal, sum: out.tx.reduce((a, t) => a + t.amt, 0) } : null;
+  return out;
+}
+function parseBOGpdf(pages){
+  const head = pdfPageText(pages[0] || []); const all = head.join('\n');
+  if (!/ანგარიშიდან ამონაწერი/.test(all)) return null;
+  const acct = (all.match(/GE\d{2}BG\d{16}/) || [])[0]; if (!acct) return null;
+  const per = all.match(/ამონაწერის პერიოდი:?\s*(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/) || all.match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/);
+  const firstNum = re => { const l = head.find(x => re.test(x)); const m = l && l.replace(/\d{2}\/\d{2}\/\d{4}/g, '').replace(re, '').match(/-?\d[\d,]*(\.\d+)?/); return m ? toNum(m[0]) : null; };
+  const startBal = firstNum(/საწყისი ნაშთი:?/), endBal = firstNum(/საბოლოო ნაშთი:?/);
+  const rows = pdfTable(pages, { text: [{ key: 'desc', label: 'დანიშნულება' }], amounts: ['GEL', 'USD', 'EUR', 'GBP'].map(c => ({ key: c, label: c })) });
+  const out = { bank: 'BOG', accounts: [{ iban: acct, bank: 'BOG', cur: 'GEL', from: per && toDate(per[1]), to: per && toDate(per[2]), startBal }], tx: [] };
+  const seen = {};
+  for (const r of rows) {
+    const desc = r.text.desc || '', date = toDate(r.date);
+    for (const cur of ['GEL', 'USD', 'EUR', 'GBP']) {
+      const amt = r.nums[cur]; if (!amt) continue;
+      const base = `BOGP:${acct}:${date}:${cur}:${amt}:${hash(desc.replace(/\s+/g, ''))}`;
+      seen[base] = (seen[base] || 0) + 1;
+      out.tx.push(Object.assign(buildBOG(desc), { id: base + '#' + seen[base], acct, date, amt, cur }));
+    }
+  }
+  out.check = startBal != null && endBal != null ? { start: startBal, end: endBal, sum: out.tx.filter(t => t.cur === 'GEL').reduce((a, t) => a + t.amt, 0) } : null;
+  return out;
+}
+// same transaction from Excel and from PDF (or overlapping periods) → same signature, so it is never counted twice
+const sigOf = t => [t.bank, t.acct, t.date, t.cur, t.amt, hash((t.desc || '').replace(/\s+/g, ''))].join('|');
 
 /* =================== import =================== */
 async function importFiles(files){
   const lines = []; let total = 0; const newMonths = []; const fresh = [];
   for (const f of files) {
     try {
-      const sheets = await readXlsx(await f.arrayBuffer());
-      let p = parseTBC(sheets);
-      if (!p.accounts.length) p = parseBOG(sheets);
-      if (!p.accounts.length) { lines.push(`✕ ${f.name}: ფორმატი ვერ ვიცანი (საჭიროა TBC-ის ან საქართველოს ბანკის xlsx ამონაწერი)`); continue; }
+      const buf = await f.arrayBuffer();
+      const isPdf = /\.pdf$/i.test(f.name) || new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(5, buf.byteLength))) === '%PDF-';
+      let p;
+      if (isPdf) {
+        const pages = await readPdf(buf);
+        p = parseTBCpdf(pages) || parseBOGpdf(pages);
+        if (!p) { lines.push(`✕ ${f.name}: PDF ვერ ვიცანი (საჭიროა TBC-ის ან საქართველოს ბანკის ამონაწერი)`); continue; }
+      } else {
+        const sheets = await readXlsx(buf);
+        p = parseTBC(sheets);
+        if (!p.accounts.length) p = parseBOG(sheets);
+        if (!p.accounts.length) { lines.push(`✕ ${f.name}: ფორმატი ვერ ვიცანი (საჭიროა TBC-ის ან საქართველოს ბანკის xlsx ან PDF ამონაწერი)`); continue; }
+      }
+      // duplicates: same id, or same signature (the same payment arriving once from Excel and once from PDF / overlapping periods)
       const have = new Set(state.tx.map(t => t.id)); let n = 0, d = 0;
-      for (const t of p.tx) { if (have.has(t.id)) { d++; continue; } state.tx.push(t); have.add(t.id); n++; newMonths.push(ymToIdx(t.date)); }
+      const sigCount = new Map(); for (const t of state.tx) { const s = sigOf(t); sigCount.set(s, (sigCount.get(s) || 0) + 1); }
+      const inFile = new Map();
+      for (const t of p.tx) {
+        const s = sigOf(t), k = (inFile.get(s) || 0) + 1; inFile.set(s, k);
+        if (have.has(t.id) || (sigCount.get(s) || 0) >= k) { d++; continue; }
+        state.tx.push(t); have.add(t.id); sigCount.set(s, (sigCount.get(s) || 0) + 1); n++; newMonths.push(ymToIdx(t.date));
+      }
       for (const a of p.accounts) {
         const ex = state.accounts[a.iban] || {};
         state.accounts[a.iban] = { bank: a.bank, cur: a.cur, label: ex.label || '' };
@@ -698,7 +869,12 @@ async function importFiles(files){
         state.imports.push(imp); fresh.push(imp);
       }
       total += n;
-      lines.push(`✓ ${p.bank === 'TBC' ? 'TBC' : 'საქართველოს ბანკი'} ${maskIban(p.accounts[0].iban)}: ${n} ახალი${d ? `, ${d} უკვე იყო` : ''}`);
+      lines.push(`✓ ${p.bank === 'TBC' ? 'TBC' : 'საქართველოს ბანკი'} ${maskIban(p.accounts[0].iban)}${isPdf ? ' (PDF)' : ''}: ${n} ახალი${d ? `, ${d} უკვე იყო` : ''}`);
+      // PDF reading check: opening balance + every transaction must equal the bank's closing balance
+      if (p.check) {
+        const diff = Math.round((p.check.start + p.check.sum - p.check.end) * 100) / 100;
+        lines.push(Math.abs(diff) < 0.01 ? `   ✓ ნაშთი ემთხვევა ბანკისას (${fmt2(p.check.start)} → ${fmt2(p.check.end)})` : `   ⚠ ჯამი ${fmt2(diff)} ₾-ით არ ემთხვევა ბანკის საბოლოო ნაშთს — ზოგი სტრიქონი შეიძლება არასწორად წაიკითხა`);
+      }
     } catch (e) { lines.push(`✕ ${f.name}: ვერ წავიკითხე — ${e.message}`); }
   }
   refreshIndex(); save();
@@ -932,7 +1108,7 @@ function viewTx(R){
   if (ui.txFilter === 'int') list = list.filter(x => x.e.cat === '__internal');
   list.sort((a, b) => b.t.date.localeCompare(a.t.date) || Math.abs(b.t.amt) - Math.abs(a.t.amt));
   let inS = 0, outS = 0; for (const x of state.tx) if (ymToIdx(x.date) === i && effCat(x).cat !== '__internal') { const a = txGel(x); if (a > 0) inS += a; else outS -= a; }
-  let h = `<div class="drop" id="drop"><b>ამონაწერის ჩატვირთვა</b><p>TBC ან საქართველოს ბანკის xlsx ამონაწერი, რამდენიმე ფაილიც ერთად. ფაილი მხოლოდ ამ მოწყობილობაზე მუშავდება.</p>
+  let h = `<div class="drop" id="drop"><b>ამონაწერის ჩატვირთვა</b><p>TBC ან საქართველოს ბანკის ამონაწერი — Excel (xlsx) ან PDF, რამდენიმე ფაილიც ერთად. ფაილი მხოლოდ ამ მოწყობილობაზე მუშავდება.</p>
     <button class="btn primary" data-act="import">ფაილის არჩევა</button></div>`;
   h += `<div class="seg"><button data-act="filt" data-v="all" class="${ui.txFilter === 'all' ? 'on' : ''}">ყველა ${all}</button><button data-act="filt" data-v="unc" class="${ui.txFilter === 'unc' ? 'on' : ''}">კატეგ. გარეშე ${uncN}</button><button data-act="filt" data-v="int" class="${ui.txFilter === 'int' ? 'on' : ''}">შიდა ${intN}</button></div>`;
   if (all) h += `<p class="small t2" style="margin:0 4px 4px">შემოვიდა <b class="pos num">${fmt(inS)} ₾</b> · გავიდა <b class="neg num">${fmt(outS)} ₾</b> <span class="muted">(შიდა გადარიცხვების გარეშე)</span></p>`;
@@ -1305,7 +1481,7 @@ main.addEventListener('change', e => { if (e.target.dataset.list === 'settings' 
 const phone = document.getElementById('phone');
 phone.addEventListener('dragover', e => { e.preventDefault(); const d = document.getElementById('drop'); if (d) d.classList.add('hover'); });
 phone.addEventListener('dragleave', e => { if (e.target === phone) { const d = document.getElementById('drop'); if (d) d.classList.remove('hover'); } });
-phone.addEventListener('drop', e => { e.preventDefault(); const fs = [...(e.dataTransfer.files || [])].filter(f => /\.xlsx$/i.test(f.name)); if (fs.length) importFiles(fs); else toast('ჩააგდე .xlsx ამონაწერი'); });
+phone.addEventListener('drop', e => { e.preventDefault(); const fs = [...(e.dataTransfer.files || [])].filter(f => /\.(xlsx|pdf)$/i.test(f.name)); if (fs.length) importFiles(fs); else toast('ჩააგდე .xlsx ან .pdf ამონაწერი'); });
 
 function exportBackup(){
   const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
