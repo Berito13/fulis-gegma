@@ -381,12 +381,7 @@ function normalize(st){
   for (const k of ['income', 'fixed', 'variable']) for (const it of out[k]) migrateItem(it, out.settings, k);
   // older imports: TBC card → loan account transfers were not labelled as loan repayment
   for (const t of out.tx) if (t.bank === 'TBC' && t.bankCat !== 'სესხის დაფარვა' && (t.op === 'LCOL' || /სესხის დაფარვა|თანხის ავტომატური შეგროვება/.test(t.desc || ''))) t.bankCat = 'სესხის დაფარვა';
-  // merges saved with the first store key: re-key them through the shops' names
-  for (const m of out.merges) if (m.kv !== 2) {
-    const keys = new Set(m.keys);
-    for (const t of out.tx) if (keys.has(normKeyV1(t.merchant))) keys.add(normKey(t.merchant));
-    m.keys = [...keys]; m.kv = 2;
-  }
+  for (const t of out.tx) if (typeof refineTx === 'function') refineTx(t);
   return out;
 }
 // older saves had one amount (+ "months"/"once" schedule for income); convert to repeat / per-month amounts
@@ -400,10 +395,15 @@ function migrateItem(it, S, kind){
   } else if (kind === 'income' && it.sched === 'once') { it.repeat = false; if (it.once) it.byMonth[it.once] = it.amount; }
   else it.repeat = true;
 }
-let state = null;
-try { const raw = localStorage.getItem(KEY); if (raw) state = normalize(JSON.parse(raw)); } catch (e) { state = null; }
+let state = null, loadFailed = false;
+try { const raw = localStorage.getItem(KEY); if (raw) state = normalize(JSON.parse(raw)); }
+catch (e) {
+  // never lose saved data: keep the unreadable copy aside before anything new is written
+  state = null; loadFailed = true;
+  try { const raw = localStorage.getItem(KEY); if (raw) localStorage.setItem(KEY + '-rescue-' + Date.now(), raw); } catch (e2) {}
+}
 let storageOk = true;
-const firstRun = !state;
+const firstRun = !state && !loadFailed;
 if (!state) state = sample();
 let saveT = null;
 function save(){
@@ -414,6 +414,7 @@ function save(){
   }, 250);
 }
 if (firstRun) save();
+if (loadFailed) setTimeout(() => toast('⚠ შენახული მონაცემები ვერ წავიკითხე — ასლი შენახულია. აღადგინე სარეზერვო ფაილიდან (პარამეტრები).', 8000), 500);
 
 const ui = { tab: 'home', month: null, txFilter: 'all', openSec: {} };
 
@@ -497,16 +498,46 @@ function itemIndex(){
 let IDX = itemIndex();
 let OWN = new Set(Object.keys(state.accounts));
 function refreshIndex(){ IDX = itemIndex(); OWN = new Set(Object.keys(state.accounts)); if (typeof nameCache !== 'undefined') nameCache = new Map(); }
+// card-to-card P2P between own cards (BoG "TBC_P2P" −350 ↔ TBC "P2P გადარიცხვა" +350, posted up to 3 days apart):
+// the bank gives no account number, so pair them by opposite amount on two different own accounts
+const isP2P = t => /p2p/i.test(t.merchant || '') || /p2p/i.test(t.op || '');
+let pairCache = { key: '', ids: new Set() };
+function pairedInternal(){
+  const key = state.tx.length + '|' + Object.keys(state.accounts).join(',');
+  if (pairCache.key === key) return pairCache.ids;
+  const ids = new Set(), used = new Set(), day = d => Date.parse(d) / 86400000;
+  const p2p = state.tx.filter(isP2P), ins = p2p.filter(t => t.amt > 0);
+  for (const o of p2p.filter(t => t.amt < 0).sort((a, b) => a.date.localeCompare(b.date))) {
+    let best = null, bd = 9;
+    for (const i of ins) {
+      if (used.has(i.id) || i.acct === o.acct || i.cur !== o.cur || Math.abs(i.amt + o.amt) > 0.005) continue;
+      const dd = Math.abs(day(i.date) - day(o.date)); if (dd <= 3 && dd < bd) { bd = dd; best = i; }
+    }
+    if (best) { used.add(best.id); ids.add(o.id); ids.add(best.id); }
+  }
+  pairCache = { key, ids }; return ids;
+}
 function autoInternal(t){
-  if (t.op === 'FX' || /^კონვერტაცია/.test(t.desc || '')) return true;
+  if (t.op === 'FX' || t.op === 'DEP' || /^კონვერტაცია/.test(t.desc || '')) return true;
   if (t.partnerAcct && OWN.has(t.partnerAcct)) return true;
+  if (isP2P(t) && pairedInternal().has(t.id)) return true;
   return false;
+}
+// transfers between people: a rule made on money going OUT never catches money coming IN (and the other way round)
+const isTransfer = t => isP2P(t) || /პირადი გადარიცხვა|გადარიცხვები|^ჩარიცხვა$/.test(t.bankCat || '');
+const dirOf = t => txGel(t) > 0 ? 'in' : 'out';
+function ruleApplies(r, t){
+  if (!isTransfer(t)) return true;
+  let d = r.dir;
+  if (!d) { const x = IDX.get(r.itemId); d = x ? (x.kind === 'income' ? 'in' : 'out') : null; }
+  return !d || d === dirOf(t);
 }
 function ruleFor(t){
   const m = (t.merchant || '').toLowerCase(), c = (t.bankCat || '').toLowerCase();
-  let r = state.rules.find(x => x.type === 'merchant' && x.value === m && m);
-  if (!r) r = state.rules.find(x => x.type === 'bankcat' && x.value === c && c);
-  return r && (r.itemId === '__internal' || r.itemId === '__none' || IDX.has(r.itemId)) ? r : null;
+  const ok = x => x.itemId === '__internal' || x.itemId === '__none' || IDX.has(x.itemId);
+  let r = state.rules.find(x => x.type === 'merchant' && m && x.value === m && ok(x) && ruleApplies(x, t));
+  if (!r) r = state.rules.find(x => x.type === 'bankcat' && c && x.value === c && ok(x) && ruleApplies(x, t));
+  return r || null;
 }
 // bank category → words that a matching plan line name contains (works for any plan, also renamed / own lines)
 const NAME_MATCH = [
@@ -526,33 +557,39 @@ const NAME_MATCH = [
   [/^(განათლება|წიგნები)$/, /განათლ|სწავლ|წიგნ|კურს/],
   [/^(გამოწერები|ციფრული სერვისები)$/, /გამოწერ|subscription/i],
   [/^სახლი და რემონტი$/, /სახლ|რემონტ|ავეჯ/],
-  [/^მოგზაურობა$/, /მოგზაურ|შვებულ|დასვენ/]
+  [/^მოგზაურობა$/, /მოგზაურ|შვებულ|დასვენ/],
+  [/^განაღდება$/, /ნაღდ|განაღდ|ბანკომატ/]
 ];
+// letters only, Georgian → Latin, spelling variants folded (same idea as the store key) — to compare names written in either script
+const foldText = s => [...(s || '').toLowerCase()].map(c => (typeof GEO_LAT !== 'undefined' && GEO_LAT[c]) || c).join('')
+  .replace(/kh/g, 'x').replace(/ts|tz/g, 'c').replace(/ch/g, 'c').replace(/sh/g, 's').replace(/zh/g, 'z').replace(/gh/g, 'g').replace(/dz/g, 'z').replace(/q/g, 'k');
 let nameCache = new Map();
 // planned amount of a line in the transaction's month
 function planAmt(it, ym){ const v = it.repeat === false ? (it.byMonth || {})[ym] : it.amount; return gel(v, it.cur); }
 const BANK_WORDS = { TBC: /tbc|თიბისი/i, BOG: /bog|საქართველოს ბანკ|bank of georgia/i };
+// returns { id, strong } — strong = the line name contains the sender/shop or the bank, i.e. it was clearly meant for this money
 function nameMatch(t){
   const bc = t.bankCat || ''; const inc = txGel(t) > 0 && !/^სესხ|საკომისიო/.test(bc);
+  if (isTransfer(t) && !/ხელფას/.test(bc)) return null;            // money to/from people: only the user can say what it is
   const row = NAME_MATCH.find(([re]) => re.test(bc));
   const kinds = inc ? ['income'] : ['fixed', 'variable', 'annual', 'oneoff'];
-  const words = (t.merchant || '').toLowerCase().replace(/შპს|ltd|llc|ი\/მ|სს/g, ' ').split(/[^0-9a-zა-ჰ]+/).filter(w => w.length >= 3);
+  const words = (t.merchant || '').toLowerCase().replace(/შპს|ltd|llc|ი\/მ|სს/g, ' ').split(/[^0-9a-zა-ჰ]+/).filter(w => w.length >= 3).map(foldText);
+  const hasWord = (it, min) => { const nm = foldText(it.name || ''); return words.some(w => w.length >= min && nm.includes(w)); };
   let cands = row ? kinds.flatMap(k => state[k].filter(i => row[1].test(i.name || ''))) : [];
   // no keyword line: a line named after the sender / shop itself (e.g. "ორი ნაბიჯი", "Wolt")
-  if (!cands.length) cands = kinds.flatMap(k => state[k].filter(i => { const nm = (i.name || '').toLowerCase(); return words.some(w => w.length >= 4 && nm.includes(w)); }));
-  if (cands.length <= 1) return cands[0] ? cands[0].id : null;
-  // several matching lines (two salaries, two loans …): sender name in the line name > bank in the line name > closest planned amount
+  if (!cands.length) cands = kinds.flatMap(k => state[k].filter(i => hasWord(i, 4)));
+  if (!cands.length) return null;
+  // one or several matching lines (two salaries, two loans …): sender name in the line name > bank in the line name > closest planned amount
   const ym = (t.date || '').slice(0, 7), amt = Math.abs(txGel(t));
   let best = null, bestScore = -Infinity;
   for (const it of cands) {
-    const nm = (it.name || '').toLowerCase();
     let s = 0;
-    if (words.some(w => nm.includes(w))) s += 1000;
-    if (BANK_WORDS[t.bank] && BANK_WORDS[t.bank].test(nm)) s += 500;
+    if (hasWord(it, 3)) s += 1000;
+    if (BANK_WORDS[t.bank] && BANK_WORDS[t.bank].test(it.name || '')) s += 500;
     const p = planAmt(it, ym); s -= p > 0 ? Math.abs(p - amt) / Math.max(p, amt) * 100 : 100;
     if (s > bestScore) { bestScore = s; best = it; }
   }
-  return best ? best.id : null;
+  return best ? { id: best.id, strong: bestScore >= 400 } : null;
 }
 // returns {cat, src}: cat = itemId | '__internal' | null ; src = manual | auto | rule | name | null
 function effCat(t){
@@ -562,10 +599,10 @@ function effCat(t){
     if (IDX.has(t.cat)) return { cat: t.cat, src: 'manual' };
   }
   if (autoInternal(t)) return { cat: '__internal', src: 'auto' };
-  const r = ruleFor(t);
-  if (r) return { cat: r.itemId === '__none' ? null : r.itemId, src: 'rule' };
-  const n = nameMatch(t);
-  if (n) return { cat: n, src: 'name' };
+  const r = ruleFor(t), n = nameMatch(t);
+  // a general bank-category rule ("ხელფასი → one line") must not beat a line named after this very sender ("ხელფასი – ორი ნაბიჯი")
+  if (r && !(r.type === 'bankcat' && n && n.strong && n.id !== r.itemId)) return { cat: r.itemId === '__none' ? null : r.itemId, src: 'rule' };
+  if (n) return { cat: n.id, src: 'name' };
   return { cat: null, src: null };
 }
 const txGel = t => (+t.amt || 0) * rateOf(t.cur);
@@ -899,6 +936,18 @@ function parseBOGpdf(pages){
   out.check = startBal != null && endBal != null ? { start: startBal, end: endBal, sum: out.tx.filter(t => t.cur === 'GEL').reduce((a, t) => a + t.amt, 0) } : null;
   return out;
 }
+// corrections that apply to every transaction (new imports and already saved ones)
+function refineTx(t){
+  const d = t.desc || '';
+  if (/glovo|wolt|bolt\s*food|yandex\s*eda/i.test(t.merchant || '')) t.bankCat = 'კაფე / სწრაფი კვება';                 // food delivery, whatever MCC the bank used
+  if (/დეპოზიტ/.test(d)) { t.op = 'DEP'; t.bankCat = 'დეპოზიტი / დანაზოგი'; t.merchant = t.amt < 0 ? 'დეპოზიტზე შენატანი' : 'დეპოზიტიდან'; }  // own savings
+  if (/დანიშნულება:\s*კონვერტაცია/.test(d)) { t.op = 'FX'; t.bankCat = 'კონვერტაცია'; }                                // currency exchange
+  if (/სესხის გაცემა/.test(d) && t.amt > 0) { t.bankCat = 'სესხის მიღება'; t.merchant = 'სესხის გაცემა (ბანკიდან)'; }
+  if (t.merchant === 'ჩარიცხვა' && /ბანკებს შორის/.test(d)) t.merchant = 'ჩარიცხვა სხვა ბანკიდან';
+  // TBC PDF: money sent to / received from a person ("საჩუქარი", "შაურმა" + person + IBAN) is a personal transfer
+  if (t.bank === 'TBC' && !t.op && /^(სხვა ხარჯები|შემოსავალი)$/.test(t.bankCat || '') && t.partnerAcct && /^[ა-ჰ]+\s+[ა-ჰ]+$/.test((t.merchant || '').trim())) t.bankCat = 'პირადი გადარიცხვა';
+  return t;
+}
 // same transaction from Excel and from PDF (or overlapping periods) → same signature, so it is never counted twice
 const sigOf = t => [t.bank, t.acct, t.date, t.cur, t.amt, hash((t.desc || '').replace(/\s+/g, ''))].join('|');
 
@@ -920,6 +969,7 @@ async function importFiles(files){
         if (!p.accounts.length) p = parseBOG(sheets);
         if (!p.accounts.length) { lines.push(`✕ ${f.name}: ფორმატი ვერ ვიცანი (საჭიროა TBC-ის ან საქართველოს ბანკის xlsx ან PDF ამონაწერი)`); continue; }
       }
+      p.tx.forEach(refineTx);
       // duplicates: same id, or same signature (the same payment arriving once from Excel and once from PDF / overlapping periods)
       const have = new Set(state.tx.map(t => t.id)); let n = 0, d = 0;
       const sigCount = new Map(); for (const t of state.tx) { const s = sigOf(t); sigCount.set(s, (sigCount.get(s) || 0) + 1); }
@@ -1038,7 +1088,8 @@ function viewHome(R){
     if (!rows.length) h += `<div class="empty">ამ თვეზე ხარჯი არ არის დაგეგმილი.</div>`;
     for (const r of rows) {
       // in an unfinished month: what is left, per-day allowance (variable budgets), and whether spending runs ahead of the calendar
-      const pace = f && mp.partial && r.plan > 0.5 ? { left: r.plan - r.fact, perDay: r.kind === 'variable' && mp.daysLeft > 0 ? (r.plan - r.fact) / mp.daysLeft : null,
+      const spent = Math.max(0, r.fact);
+      const pace = f && mp.partial && r.plan > 0.5 ? { left: r.plan - spent, perDay: r.kind === 'variable' && mp.daysLeft > 0 ? (r.plan - spent) / mp.daysLeft : null,
         fast: r.kind === 'variable' && r.fact <= r.plan && r.fact > r.plan * mp.day / mp.dim + 0.5, days: mp.daysLeft } : null;
       h += catRow(r.it.name || '(უსახელო)', r.fact, r.plan, false, 0, !f, r.it.id, pace);
     }
@@ -1099,6 +1150,8 @@ function catRow(name, fact, plan, unplanned, uncN, noFact, id, pace){
   let bar = '', flag = '';
   if (unplanned) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">${uncN} ტრანზ.</span>`; }
   else if (noFact) { bar = ''; }
+  // more came back than was spent (refunds / money in under an expense line)
+  else if (fact < -0.5) { bar = ''; flag = `<span class="flag ok">შემოვიდა ${fmt(-fact)} ₾ — შეამოწმე ტრანზაქციები</span>`; }
   else if (plan <= 0.5) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">დაუგეგმავი</span>${id ? `<span class="link" data-act="goto-item" data-id="${id}">დააყენე გეგმა →</span>` : ''}`; }
   else {
     const p = fact / plan;
@@ -1312,7 +1365,7 @@ function doMerge(id){
 function openTx(id){
   const t = state.tx.find(x => x.id === id); if (!t) return;
   const e = effCat(t);
-  const srcTxt = e.src === 'manual' ? 'ხელით მინიჭებული' : e.src === 'rule' ? 'წესით' : e.src === 'auto' ? 'ავტომატურად: გადარიცხვა შენს ანგარიშზე / კონვერტაცია' : e.src === 'name' ? `ავტომატურად: ბანკის კატეგორია „${t.bankCat}“ → გეგმის სტრიქონი` : 'კატეგორია არ აქვს';
+  const srcTxt = e.src === 'manual' ? 'ხელით მინიჭებული' : e.src === 'rule' ? 'წესით' : e.src === 'auto' ? 'ავტომატურად: შენს ანგარიშებს შორის (გადარიცხვა / ბარათიდან ბარათზე / კონვერტაცია / დეპოზიტი)' : e.src === 'name' ? `ავტომატურად: ბანკის კატეგორია „${t.bankCat}“ → გეგმის სტრიქონი` : 'კატეგორია არ აქვს';
   const btn = (cid, label, extra) => `<button class="cbtn ${extra || ''} ${e.cat === cid || (cid === '__none' && !e.cat && e.src) ? 'cur' : ''}" data-act="setcat" data-id="${esc(t.id)}" data-cat="${cid}">${esc(label)}</button>`;
   let h = `<div class="grab"></div><h3>${esc(t.merchant)}</h3>
     <div class="small t2"><b class="num ${t.amt > 0 ? 'pos' : ''}">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)} ${t.cur}</b> · ${fmtDate(t.date)} ${t.date.slice(0, 4)} · ${t.bank === 'TBC' ? 'TBC' : 'საქართველოს ბანკი'} ${maskIban(t.acct)}</div>
@@ -1341,8 +1394,9 @@ function setCat(id, cat){
   if (scope === 'one') { t.cat = cat; toast('მიენიჭა: ' + (cat === '__none' ? 'გეგმის გარეშე' : catName(cat))); }
   else {
     const value = (scope === 'merchant' ? t.merchant : t.bankCat || '').toLowerCase();
-    state.rules = state.rules.filter(r => !(r.type === scope && r.value === value));
-    state.rules.push({ id: uid(), type: scope, value, itemId: cat });
+    // replace an older rule for the same name — for transfers only the one for the same direction (in / out keep separate rules)
+    state.rules = state.rules.filter(r => !(r.type === scope && r.value === value && (!isTransfer(t) || !r.dir || r.dir === dirOf(t))));
+    state.rules.push({ id: uid(), type: scope, value, itemId: cat, dir: dirOf(t) });
     if (t.cat) delete t.cat;
     const n = state.tx.filter(x => { const e = effCat(x); return e.src === 'rule' && ruleFor(x) && ruleFor(x).value === value; }).length;
     toast(`წესი შეიქმნა: „${scope === 'merchant' ? t.merchant : t.bankCat}“ → ${cat === '__none' ? 'გეგმის გარეშე' : catName(cat)} (${n} ტრანზაქცია)`);
@@ -1645,6 +1699,16 @@ backupIn.addEventListener('change', () => {
 });
 let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (ui.tab === 'home') drawChart(compute()); }, 150); });
 
+// merges saved with the first store key: re-key them through the shops' names (runs here, after every helper is defined)
+(function migrateMerges(){
+  let changed = false;
+  for (const m of state.merges || []) if (m.kv !== 2) {
+    const keys = new Set(m.keys);
+    for (const t of state.tx) if (keys.has(normKeyV1(t.merchant))) keys.add(normKey(t.merchant));
+    m.keys = [...keys]; m.kv = 2; changed = true;
+  }
+  if (changed && !loadFailed) save();
+})();
 render();
 
 // offline support when served from a website (not when opened as a local file)
