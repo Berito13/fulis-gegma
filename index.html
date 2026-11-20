@@ -72,7 +72,9 @@ button,input,select{font:inherit;color:inherit}
 .msw{display:inline-flex;align-items:center;gap:2px;background:var(--surface-2);border-radius:10px;padding:2px}
 .msw button{border:0;background:transparent;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;color:var(--text-2)}
 .msw button:hover{background:var(--border)}
-.msw span{min-width:92px;text-align:center;font-weight:600;font-size:13px}
+.msw span{min-width:92px;text-align:center;font-weight:600;font-size:13px;white-space:nowrap}
+.msw .sm{display:none}
+@media (max-width:400px){ .msw .lg{display:none} .msw .sm{display:inline} .msw span{min-width:62px} .appbar h1{font-size:17px} }
 main{flex:1;overflow-y:auto;padding:12px 12px calc(84px + env(safe-area-inset-bottom));scroll-behavior:smooth}
 main::-webkit-scrollbar{width:0}
 
@@ -97,8 +99,9 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 
 .cat{padding:9px 0;border-bottom:1px solid var(--border);cursor:default}
 .cat:last-child{border-bottom:0}
-.cat .top{display:flex;align-items:baseline;gap:8px}
-.cat .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat .top{display:flex;align-items:flex-start;gap:10px}
+.cat .nm{flex:1;min-width:0;overflow-wrap:anywhere}
+.cat .meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:6px;font-size:12px}
 .cat .amt{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .cat .amt b{font-weight:700}
 .track{height:6px;background:var(--bar-track);border-radius:4px;margin-top:6px;overflow:hidden;display:flex}
@@ -153,11 +156,11 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 .tx .ic{width:34px;height:34px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
 .tx .ic.TBC{background:#00a3e0} .tx .ic.BOG{background:#ff6b00}
 .tx .mid{flex:1;min-width:0}
-.tx .m{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.tx .s{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx .m{font-weight:600;overflow-wrap:anywhere}
+.tx .s{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
 .tx .rt{text-align:right;flex:none;max-width:42%}
 .tx .a{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
-.chipc{display:inline-block;font-size:11px;border-radius:6px;padding:1px 6px;margin-top:2px;background:var(--surface-2);color:var(--text-2);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:top}
+.chipc{display:inline-block;font-size:11px;border-radius:6px;padding:1px 6px;margin-top:3px;background:var(--surface-2);color:var(--text-2);max-width:100%;white-space:normal;text-align:right;overflow-wrap:anywhere;vertical-align:top}
 .chipc.none{background:var(--warn-bg);color:var(--text)}
 .chipc.int{background:transparent;border:1px dashed var(--border-strong)}
 .tx.internal{opacity:.6}
@@ -176,7 +179,14 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 .sec .body{background:var(--surface);border:1px solid var(--border);border-top:0;border-radius:0 0 16px 16px;padding:0 12px 12px}
 .hint{font-size:12px;color:var(--muted);margin:0 0 10px}
 .item{border:1px solid var(--border);border-radius:12px;padding:8px;margin-bottom:8px}
-.item .r1{display:grid;grid-template-columns:minmax(0,1fr) 86px 62px 26px;gap:5px;align-items:center}
+/* line 1: full-width name + delete; line 2: amount (or month total) + currency */
+.item .r1{display:grid;grid-template-columns:minmax(0,1fr) 76px 32px;grid-template-areas:"name name del" "amt cur .";gap:6px;align-items:center}
+.item .r1 > :nth-child(1){grid-area:name}
+.item .r1 > :nth-child(2){grid-area:amt}
+.item .r1 > :nth-child(3){grid-area:cur}
+.item .r1 > :nth-child(4){grid-area:del}
+.item .r1.goal{grid-template-areas:"name name del" "amt amt ."}
+.item .r1.goal > :nth-child(3){grid-area:del}
 .item .r2{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:7px;font-size:12px;color:var(--text-2)}
 .item .r2 label{display:inline-flex;align-items:center;gap:5px;max-width:100%;min-width:0}
 .item .r2 .in{width:auto;padding:4px 6px;font-size:12px;max-width:100%;min-width:0}
@@ -185,6 +195,7 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 .in:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
 .in.n{text-align:right;font-variant-numeric:tabular-nums}
 select.in{padding:6px 4px}
+textarea.nm-in{resize:none;overflow:hidden;display:block;line-height:1.35;font-family:inherit;min-height:34px;field-sizing:content}
 .del{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:5px;border-radius:7px}
 .del:hover{background:var(--bad-bg);color:var(--neg)}
 .chips{display:flex;flex-wrap:wrap;gap:3px}
@@ -196,13 +207,14 @@ select.in{padding:6px 4px}
 .mgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
 .mgrid label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--text-2)}
 .mgrid .in{padding:5px 6px;font-size:13px}
-.mtot{font-size:12px;color:var(--text-2);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.mtot{font-size:13px;color:var(--text-2);padding-left:2px;font-variant-numeric:tabular-nums}
 .f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-2)}
 .list-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
 .list-row:last-child{border-bottom:0}
 .list-row .grow{flex:1;min-width:0}
 .list-row .grow div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-row .grow div.wrap{white-space:normal;overflow:visible;overflow-wrap:anywhere}
 
 /* bottom sheet */
 .sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:30;display:flex;align-items:flex-end}
@@ -689,13 +701,14 @@ function render(){
   const [lo, hi] = monthRange(R); ui.month = Math.max(lo, Math.min(hi, ui.month));
   document.getElementById('title').textContent = titles[ui.tab];
   document.getElementById('msw').style.visibility = (ui.tab === 'home' || ui.tab === 'tx') ? 'visible' : 'hidden';
-  document.getElementById('mlabel').textContent = mLong(ui.month);
+  document.getElementById('mlabel').innerHTML = `<b class="lg">${mLong(ui.month)}</b><b class="sm">${MN[ui.month % 12]} ${Math.floor(ui.month / 12)}</b>`;
   for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === ui.tab);
   const uncAll = state.tx.filter(t => { const e = effCat(t); return !e.cat && e.src === null; }).length;
   const badge = document.getElementById('badge'); badge.hidden = !uncAll; badge.textContent = uncAll > 99 ? '99+' : uncAll;
   const st = main.scrollTop;
   main.innerHTML = ui.tab === 'home' ? viewHome(R) : ui.tab === 'tx' ? viewTx(R) : ui.tab === 'plan' ? viewPlan(R) : viewMore(R);
   if (ui.tab === 'home') drawChart(R);
+  if (ui.tab === 'plan') autosizeIn(main);
   main.scrollTop = ui.keepScroll ? st : 0; ui.keepScroll = false;
 }
 
@@ -779,14 +792,16 @@ function catRow(name, fact, plan, unplanned, uncN, noFact){
     if (p > 1.0001) { bar = `<i style="width:${100 / p}%"></i><i class="over" style="width:${100 - 100 / p}%;border-radius:0 4px 4px 0"></i>`; flag = `<span class="flag over">+${fmt(fact - plan)} ზედმეტი</span>`; }
     else bar = `<i style="width:${Math.max(0, p * 100)}%"></i>`;
   }
-  return `<div class="cat" ${unplanned ? 'data-act="go-unc" style="cursor:pointer"' : ''}><div class="top"><span class="nm">${esc(name)}</span>${flag}
-    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b>`}${unplanned ? '' : (noFact ? '' : ' / ') + fmt(plan)}</span></div><div class="track">${bar}</div>
-    ${unplanned ? '<div class="small" style="margin-top:4px"><span class="link">მიანიჭე კატეგორია →</span></div>' : ''}</div>`;
+  const meta = flag || unplanned ? `<div class="meta">${flag}${unplanned ? '<span class="link">მიანიჭე კატეგორია →</span>' : ''}</div>` : '';
+  return `<div class="cat" ${unplanned ? 'data-act="go-unc" style="cursor:pointer"' : ''}><div class="top"><span class="nm">${esc(name)}</span>
+    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b>`}${unplanned ? '' : (noFact ? '' : ' / ') + fmt(plan)}</span></div><div class="track">${bar}</div>${meta}</div>`;
 }
 function incRow(name, fact, plan, noFact){
   const p = plan > 0 ? Math.min(1, fact / plan) : 1;
-  return `<div class="cat"><div class="top"><span class="nm">${esc(name)}</span>${!noFact && plan > 0.5 && fact < plan - 0.5 ? `<span class="flag over">−${fmt(plan - fact)}</span>` : ''}
-    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b> / `}${fmt(plan)}</span></div>${noFact ? '' : `<div class="track"><i style="width:${p * 100}%;background:var(--pos)"></i></div>`}</div>`;
+  const short = !noFact && plan > 0.5 && fact < plan - 0.5;
+  return `<div class="cat"><div class="top"><span class="nm">${esc(name)}</span>
+    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b> / `}${fmt(plan)}</span></div>${noFact ? '' : `<div class="track"><i style="width:${p * 100}%;background:var(--pos)"></i></div>`}
+    ${short ? `<div class="meta"><span class="flag over">გეგმაზე ნაკლები: −${fmt(plan - fact)}</span></div>` : ''}</div>`;
 }
 
 /* ---------- chart ---------- */
@@ -905,7 +920,10 @@ function setCat(id, cat){
 }
 
 /* ---------- plan editor ---------- */
-const fName = (l, it, ph) => `<input class="in" data-list="${l}" data-id="${it.id}" data-field="name" value="${esc(it.name)}" placeholder="${ph}">`;
+// name box grows to more lines instead of hiding long names
+const fName = (l, it, ph) => `<textarea class="in nm-in" rows="1" data-list="${l}" data-id="${it.id}" data-field="name" placeholder="${ph}">${esc(it.name)}</textarea>`;
+const autosize = el => { if (!el.offsetParent) return; el.style.height = 'auto'; el.style.height = (el.scrollHeight + 2) + 'px'; };
+const autosizeIn = root => root.querySelectorAll('textarea.nm-in').forEach(autosize);
 const fNum = (l, it, f, ph) => `<input class="in n" type="number" inputmode="decimal" step="any" data-list="${l}" data-id="${it.id}" data-field="${f}" data-type="num" value="${it[f] ?? ''}" placeholder="${ph || '0'}">`;
 const fCur = (l, it) => `<select class="in" data-list="${l}" data-id="${it.id}" data-field="cur">${['GEL', 'USD', 'EUR'].map(c => `<option${(it.cur || 'GEL') === c ? ' selected' : ''}>${c}</option>`).join('')}</select>`;
 const fMonth = (l, it, f) => `<input class="in" type="month" data-list="${l}" data-id="${it.id}" data-field="${f}" value="${esc(it[f] || '')}">`;
@@ -940,7 +958,7 @@ const SECTIONS = [
     row: it => `<div class="item"><div class="r1">${fName('oneoff', it, 'მაგ. ავეჯი')}${fNum('oneoff', it, 'amount')}${fCur('oneoff', it)}${fDel('oneoff', it)}</div><div class="r2"><label>თვე ${fMonth('oneoff', it, 'month')}</label></div></div>`,
     add: () => ({ id: uid(), name: '', amount: '', cur: 'GEL', month: '' }) },
   { key: 'goals', title: 'დანაზოგის მიზნები', hint: '„უკვე დაგროვილი“ თანხა საწყის ნაშთშია ჩათვლილი. შენატანი ნაშთში რჩება, მაგრამ თავისუფალს აკლდება.',
-    row: (it, gi) => `<div class="item"><div class="r1" style="grid-template-columns:minmax(0,1fr) 96px 26px">${fName('goals', it, 'მაგ. მანქანა')}${fNum('goals', it, 'target', 'მიზანი ₾')}${fDel('goals', it)}</div>
+    row: (it, gi) => `<div class="item"><div class="r1 goal">${fName('goals', it, 'მაგ. მანქანა')}${fNum('goals', it, 'target', 'მიზნის თანხა, ₾')}${fDel('goals', it)}</div>
       <div class="r2"><label>დაგროვილი ${fNum('goals', it, 'saved')}</label><label>ვადა ${fMonth('goals', it, 'deadline')}</label>
       <label><input type="checkbox" data-list="goals" data-id="${it.id}" data-field="spend" data-type="bool"${it.spend ? ' checked' : ''}> ვადაზე დაიხარჯება</label></div>
       <div class="goalinfo" data-goal="${it.id}">${goalTxt(gi)}</div></div>`,
@@ -1004,7 +1022,7 @@ function viewMore(R){
     const ts = state.tx.filter(t => t.acct === iban); const ds = ts.map(t => t.date).sort();
     h += `<div class="list-row"><div class="tx" style="border:0;padding:0;margin:0;background:none;cursor:default"><div class="ic ${a.bank}">${a.bank === 'TBC' ? 'TBC' : 'BoG'}</div></div>
       <div class="grow"><input class="in" style="padding:4px 6px;font-size:13px" data-acct="${esc(iban)}" value="${esc(a.label || '')}" placeholder="სახელი, მაგ. ხელფასის ბარათი">
-      <div class="small muted">${esc(iban)} · ${ts.length} ტრანზ.${ds.length ? ' · ' + ds[0] + ' – ' + ds[ds.length - 1] : ''}</div></div>
+      <div class="small muted wrap">${esc(iban)}</div><div class="small muted wrap">${ts.length} ტრანზაქცია${ds.length ? ' · ' + ds[0] + ' – ' + ds[ds.length - 1] : ''}</div></div>
       <button class="del" data-act="delacct" data-iban="${esc(iban)}" aria-label="ანგარიშის წაშლა">✕</button></div>`;
   }
   h += `<p class="small muted" style="margin:8px 0 0">გადარიცხვები ამ ანგარიშებს შორის ავტომატურად „შიდად“ ითვლება და არც ხარჯში, არც შემოსავალში არ შედის.</p></div>`;
@@ -1012,7 +1030,7 @@ function viewMore(R){
   const rules = state.rules.filter(r => r.itemId === '__internal' || r.itemId === '__none' || IDX.has(r.itemId));
   h += `<details class="sec"><summary><h2>კატეგორიზაციის წესები</h2><span class="sum">${rules.length}</span></summary><div class="body">
     <p class="hint">იქმნება ტრანზაქციაზე კატეგორიის მინიჭებისას. წაშლის შემდეგ შესაბამისი ტრანზაქციები ისევ კატეგორიის გარეშე დარჩება.</p>`;
-  for (const r of rules) h += `<div class="list-row"><div class="grow"><div><b>${esc(r.value)}</b></div><div class="small muted">${r.type === 'merchant' ? 'მიმღები/ობიექტი' : 'ბანკის კატეგორია'} → ${esc(r.itemId === '__none' ? 'გეგმის გარეშე' : catName(r.itemId))}</div></div><button class="del" data-act="delrule" data-id="${r.id}" aria-label="წესის წაშლა">✕</button></div>`;
+  for (const r of rules) h += `<div class="list-row"><div class="grow"><div class="wrap"><b>${esc(r.value)}</b></div><div class="small muted wrap">${r.type === 'merchant' ? 'მიმღები/ობიექტი' : 'ბანკის კატეგორია'} → ${esc(r.itemId === '__none' ? 'გეგმის გარეშე' : catName(r.itemId))}</div></div><button class="del" data-act="delrule" data-id="${r.id}" aria-label="წესის წაშლა">✕</button></div>`;
   if (!rules.length) h += `<div class="empty">წესები ჯერ არ არის.</div>`;
   h += `</div></details>`;
   // data
@@ -1076,9 +1094,11 @@ function onAct(e){
 }
 main.addEventListener('click', onAct);
 sheet.addEventListener('click', onAct);
-main.addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.sec) ui.openSec[d.dataset.sec] = d.open; }, true);
+main.addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.sec) { ui.openSec[d.dataset.sec] = d.open; if (d.open) autosizeIn(d); } }, true);
+main.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('textarea.nm-in')) { e.preventDefault(); e.target.blur(); } });
 main.addEventListener('input', e => {
   const t = e.target;
+  if (t.matches('textarea.nm-in')) { t.value = t.value.replace(/\n/g, ' '); autosize(t); }
   if (t.dataset.acct) { const a = state.accounts[t.dataset.acct]; if (a) { a.label = t.value; save(); } return; }
   const list = t.dataset.list, field = t.dataset.field; if (!list || !field) return;
   let v = t.dataset.type === 'bool' ? t.checked : t.value;
