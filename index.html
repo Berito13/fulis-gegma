@@ -108,6 +108,8 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 .cat .top{display:flex;align-items:flex-start;gap:10px}
 .cat .nm{flex:1;min-width:0;overflow-wrap:anywhere}
 .cat .meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:6px;font-size:12px}
+.otherin{margin-top:10px;padding:9px 10px;border-radius:10px;background:var(--surface-2);font-size:13px}
+.otherin .top{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:3px}
 .pace{margin-top:10px;padding:9px 10px;border-radius:10px;background:var(--accent-soft);font-size:13px;display:flex;flex-direction:column;gap:4px}
 .cat.click{cursor:pointer}
 .cat.click:active{opacity:.7}
@@ -521,16 +523,30 @@ const NAME_MATCH = [
   [/^მოგზაურობა$/, /მოგზაურ|შვებულ|დასვენ/]
 ];
 let nameCache = new Map();
+// planned amount of a line in the transaction's month
+function planAmt(it, ym){ const v = it.repeat === false ? (it.byMonth || {})[ym] : it.amount; return gel(v, it.cur); }
+const BANK_WORDS = { TBC: /tbc|თიბისი/i, BOG: /bog|საქართველოს ბანკ|bank of georgia/i };
 function nameMatch(t){
   const bc = t.bankCat || ''; const inc = txGel(t) > 0 && !/^სესხ|საკომისიო/.test(bc);
-  const key = bc + '|' + inc; if (nameCache.has(key)) return nameCache.get(key);
-  let found = null;
   const row = NAME_MATCH.find(([re]) => re.test(bc));
-  if (row) {
-    const kinds = inc ? ['income'] : ['fixed', 'variable', 'annual', 'oneoff'];
-    for (const k of kinds) { const it = state[k].find(i => row[1].test(i.name || '')); if (it) { found = it.id; break; } }
+  const kinds = inc ? ['income'] : ['fixed', 'variable', 'annual', 'oneoff'];
+  const words = (t.merchant || '').toLowerCase().replace(/შპს|ltd|llc|ი\/მ|სს/g, ' ').split(/[^0-9a-zა-ჰ]+/).filter(w => w.length >= 3);
+  let cands = row ? kinds.flatMap(k => state[k].filter(i => row[1].test(i.name || ''))) : [];
+  // no keyword line: a line named after the sender / shop itself (e.g. "ორი ნაბიჯი", "Wolt")
+  if (!cands.length) cands = kinds.flatMap(k => state[k].filter(i => { const nm = (i.name || '').toLowerCase(); return words.some(w => w.length >= 4 && nm.includes(w)); }));
+  if (cands.length <= 1) return cands[0] ? cands[0].id : null;
+  // several matching lines (two salaries, two loans …): sender name in the line name > bank in the line name > closest planned amount
+  const ym = (t.date || '').slice(0, 7), amt = Math.abs(txGel(t));
+  let best = null, bestScore = -Infinity;
+  for (const it of cands) {
+    const nm = (it.name || '').toLowerCase();
+    let s = 0;
+    if (words.some(w => nm.includes(w))) s += 1000;
+    if (BANK_WORDS[t.bank] && BANK_WORDS[t.bank].test(nm)) s += 500;
+    const p = planAmt(it, ym); s -= p > 0 ? Math.abs(p - amt) / Math.max(p, amt) * 100 : 100;
+    if (s > bestScore) { bestScore = s; best = it; }
   }
-  nameCache.set(key, found); return found;
+  return best ? best.id : null;
 }
 // returns {cat, src}: cat = itemId | '__internal' | null ; src = manual | auto | rule | name | null
 function effCat(t){
@@ -979,8 +995,9 @@ function viewHome(R){
   let fInc = 0, fExp = 0;
   if (f) {
     for (const [id, a] of Object.entries(f.byItem)) { const x = IDX.get(id); if (!x) continue; if (x.kind === 'income') fInc += a; else fExp -= a; }
-    fInc += f.unIn; fExp += f.unOut;
+    fExp += f.unOut;   // income = income categories only (salary …); other money coming in is shown separately
   }
+  const otherIn = f ? f.unIn : 0;
   // month in progress: up to which day the statements reach, how many days are left
   const mp = monthProgress(i);
   let h = '';
@@ -995,6 +1012,9 @@ function viewHome(R){
       <span class="sep"></span>
       <span class="l"><b>დარჩა</b></span><span class="v">${fmt(pInc - pExp)}</span><span class="v ${f ? (fInc - fExp < 0 ? 'neg' : 'pos') : ''}">${f ? fmt(fInc - fExp) : '—'}</span>
     </div>
+    ${otherIn > 0.5 ? `<div class="otherin"><div class="top"><span>სხვა შემოსული ფული <span class="muted">(შემოსავალში არ ითვლება)</span></span><b class="num">+${fmt(otherIn)}</b></div>
+      <div class="small muted">გადარიცხვები ადამიანებისგან, დაბრუნებული თანხა და სხვა, რასაც შემოსავლის კატეგორია არ აქვს. თუ რომელიმე შემოსავალია, მიანიჭე კატეგორია „ტრანზაქციებში“.</div>
+      <div class="small" style="margin-top:4px">ანგარიშებზე ფაქტობრივი ცვლილება: <b class="num ${fInc - fExp + otherIn < 0 ? 'neg' : 'pos'}">${fInc - fExp + otherIn >= 0 ? '+' : ''}${fmt(fInc - fExp + otherIn)} ₾</b></div></div>` : ''}
     ${f ? `<p class="small muted" style="margin:10px 0 0">ფაქტი: ${f.n} ტრანზაქცია ამონაწერებიდან${f.internal ? `, მათგან ${f.internal} საკუთარ ანგარიშებს შორის გადარიცხვაა და არ ჩაითვალა` : ''}. ₾-ში.</p>`
          : `<p class="small muted" style="margin:10px 0 0">ამ თვის ამონაწერი ჯერ არ ჩაგიტვირთავს. <button class="link" data-act="import">ჩატვირთვა</button></p>`}
     ${f && mp.partial ? paceBox(R, k, inPlan, f, mp) : ''}
@@ -1021,7 +1041,7 @@ function viewHome(R){
     if (inc.length || (f && f.unIn > 0.5)) {
       h += `<div class="card"><h2>შემოსავლები<span class="r">ფაქტი / გეგმა, ₾</span></h2>`;
       for (const r of inc) h += incRow(r.it.name || '(უსახელო)', r.fact, r.plan, !f, r.it.id);
-      if (f && f.unIn > 0.5) h += `<div class="cat"><div class="top"><span class="nm">კატეგორიის გარეშე შემოსული</span><span class="amt"><b>${fmt(f.unIn)}</b></span></div></div>`;
+      if (f && f.unIn > 0.5) h += `<div class="cat click" data-act="go-unc"><div class="top"><span class="nm">სხვა შემოსული <span class="muted small">(შემოსავალში არ ითვლება)</span></span><span class="amt"><b>${fmt(f.unIn)}</b><span class="chev">›</span></span></div></div>`;
       h += `</div>`;
     }
   }
