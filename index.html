@@ -117,6 +117,9 @@ details.mer[open] > summary .nm{font-weight:600}
 .mtx{margin-top:8px;background:var(--surface-2);border-radius:10px;padding:2px 10px}
 .mtr{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)}
 .mtr:last-child{border-bottom:0}
+.mergebar{font-size:13px;background:var(--accent-soft);border-radius:10px;padding:8px 10px;margin:4px 0 6px}
+label.cat.mrg{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+label.cat.mrg input{margin-top:3px;width:18px;height:18px;flex:none}
 .cat .amt{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .cat .amt b{font-weight:700}
 .track{height:6px;background:var(--bar-track);border-radius:4px;margin-top:6px;overflow:hidden;display:flex}
@@ -349,12 +352,12 @@ function sample(){
       R('აფთიაქი', health), R('სამედიცინო', health),
       R('ტანსაცმელი', clothes), R('გართობა', fun)
     ],
-    tx: [], accounts: {}, imports: []
+    tx: [], accounts: {}, imports: [], merges: []
   };
 }
 function blank(){
   const st = sample();
-  for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff', 'goals', 'rules', 'tx', 'imports']) st[k] = [];
+  for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff', 'goals', 'rules', 'tx', 'imports', 'merges']) st[k] = [];
   st.accounts = {}; st.settings.opening = 0; st.settings.buffer = 0;
   return st;
 }
@@ -362,7 +365,7 @@ function normalize(st){
   if (!st || typeof st !== 'object' || !st.settings) return null;
   const b = blank();
   const out = { version: 2, settings: Object.assign({}, b.settings, st.settings), accounts: st.accounts && typeof st.accounts === 'object' ? st.accounts : {} };
-  for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff', 'goals', 'rules', 'tx', 'imports']) out[k] = Array.isArray(st[k]) ? st[k] : [];
+  for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff', 'goals', 'rules', 'tx', 'imports', 'merges']) out[k] = Array.isArray(st[k]) ? st[k] : [];
   for (const k of ['income', 'fixed', 'variable']) for (const it of out[k]) migrateItem(it, out.settings, k);
   return out;
 }
@@ -913,17 +916,36 @@ function viewTx(R){
   }
   return h;
 }
+/* ---------- stores: the same shop under different bank names ---------- */
+// automatic: "FLT*Glovoapp", "LTD X", "Pharmadepot-36" → one key (prefixes, branch numbers and punctuation dropped)
+const normKey = s => {
+  let k = (s || '').toLowerCase().trim(), prev;
+  do { prev = k; k = k.replace(/^(flt\s*\*|ltd\.?\s+|llc\s+|shps\s+|შპს\s*|ი\/მ\s*|pos\s+)/, '').trim(); } while (k !== prev);
+  k = k.replace(/[\s\-#№]*\d+$/, '').replace(/[^0-9a-zა-ჰ]+/g, '');
+  return k || '—';
+};
+// manual: groups the user merged (state.merges = [{id, name, keys:[normKey…]}])
+function storeOf(t){
+  const k = normKey(t.merchant); const m = state.merges.find(g => g.keys.includes(k));
+  return m ? { key: 'm:' + m.id, raw: k, merged: m } : { key: k, raw: k, merged: null };
+}
 // where the money of one plan line went in the selected month: per store, with visits, share and change vs previous month
-function openCat(id){
+function openCat(id, mergeMode, picked){
   const x = IDX.get(id); if (!x) return;
   const i = ui.month, sign = x.kind === 'income' ? 1 : -1;
-  const keyOf = t => (t.merchant || '').trim().toLowerCase() || '—';
   const group = m => {
     const g = new Map();
     for (const t of state.tx) {
       if (ymToIdx(t.date) !== m || effCat(t).cat !== id) continue;
-      let o = g.get(keyOf(t)); if (!o) { o = { name: t.merchant || '—', sum: 0, n: 0, tx: [] }; g.set(keyOf(t), o); }
+      const s = storeOf(t);
+      let o = g.get(s.key); if (!o) { o = { key: s.key, merged: s.merged, names: {}, keys: new Set(), sum: 0, n: 0, tx: [] }; g.set(s.key, o); }
+      o.names[t.merchant || '—'] = (o.names[t.merchant || '—'] || 0) + 1; o.keys.add(s.raw);
       o.sum += sign * txGel(t); o.n++; o.tx.push(t);
+    }
+    for (const o of g.values()) {
+      const variants = Object.keys(o.names);
+      o.name = o.merged ? o.merged.name : variants.sort((a, b) => o.names[b] - o.names[a])[0];
+      o.variants = variants.length > 1 || o.merged ? variants : [];
     }
     return g;
   };
@@ -939,9 +961,20 @@ function openCat(id){
       <span class="l">ფაქტი</span><span class="v">${money(total)}</span>
       <span class="l">გეგმა</span><span class="v">${money(plan)}</span>
       ${hasPrev ? `<span class="l">წინა თვე (${mShort(i - 1)})</span><span class="v">${money(prevTotal)}</span>` : ''}
-    </div><p class="small muted" style="margin:0 0 4px">შეეხე მაღაზიას მისი ტრანზაქციების სანახავად.</p>`;
+    </div>`;
+  picked = picked || new Set();
+  if (mergeMode) {
+    h += `<div class="mergebar"><b>მონიშნე ერთი მაღაზიის სხვადასხვა სახელი</b> (მინ. 2), შემდეგ დააჭირე „გაერთიანებას“.</div>`;
+    for (const o of list) h += `<label class="cat mrg"><input type="checkbox" data-act="store-pick" data-key="${esc(o.key)}"${picked.has(o.key) ? ' checked' : ''}>
+      <span class="nm">${esc(o.name)}${o.variants.length ? `<span class="small muted"> (${o.variants.map(esc).join(', ')})</span>` : ''}</span><span class="amt"><b>${fmt2(o.sum)}</b> ₾</span></label>`;
+    h += `<div class="btns" style="margin-top:12px"><button class="btn primary block" data-act="merge-do" data-id="${id}">გაერთიანება (${picked.size})</button>
+      <button class="btn block" data-act="merge-off" data-id="${id}">გაუქმება</button></div>`;
+    openSheet(h); sheetCtx = { id, list, picked };
+    return;
+  }
+  if (list.length > 1) h += `<p class="small muted" style="margin:0 0 4px">შეეხე მაღაზიას ტრანზაქციების სანახავად. ერთი მაღაზია რამდენიმე სახელით ჩანს? <button class="link" data-act="merge-on" data-id="${id}">გაერთიანება</button></p>`;
   for (const o of list) {
-    const p = prev.get(keyOf(o.tx[0]));
+    const p = prev.get(o.key);
     let cmp = '';
     if (hasPrev) {
       if (!p) cmp = '<span class="flag unpl">წინა თვეში არ იყო</span>';
@@ -950,12 +983,28 @@ function openCat(id){
     const share = total > 0 ? Math.max(0, o.sum / total * 100) : 0;
     h += `<details class="cat mer"><summary><div class="top"><span class="nm">${esc(o.name)}</span><span class="amt"><b>${fmt2(o.sum)}</b> ₾</span></div>
       <div class="track"><i style="width:${share}%"></i></div>
-      <div class="meta"><span class="muted">${o.n}-ჯერ · ${Math.round(share)}%</span>${cmp}</div></summary>
-      <div class="mtx">${o.tx.sort((a, b) => a.date.localeCompare(b.date)).map(t => `<div class="mtr" data-act="tx" data-id="${esc(t.id)}"><span>${fmtDate(t.date)}${t.card ? ' · ••' + esc(t.card.slice(-4)) : ''}</span><span class="num">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)}${t.cur !== 'GEL' ? ' ' + t.cur : ''}</span></div>`).join('')}</div></details>`;
+      <div class="meta"><span class="muted">${o.n}-ჯერ · ${Math.round(share)}%</span>${cmp}</div>
+      ${o.variants.length ? `<div class="small muted" style="margin-top:3px">სახელები ბანკში: ${o.variants.map(esc).join(', ')}</div>` : ''}</summary>
+      <div class="mtx">${o.tx.sort((a, b) => a.date.localeCompare(b.date)).map(t => `<div class="mtr" data-act="tx" data-id="${esc(t.id)}"><span>${fmtDate(t.date)}${t.card ? ' · ••' + esc(t.card.slice(-4)) : ''}${o.variants.length ? ' · ' + esc(t.merchant) : ''}</span><span class="num">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)}${t.cur !== 'GEL' ? ' ' + t.cur : ''}</span></div>`).join('')}</div></details>`;
   }
   if (!list.length) h += '<div class="empty">ამ თვეში ტრანზაქცია არ არის.</div>';
   h += `<button class="btn block" data-act="close" style="margin-top:12px">დახურვა</button>`;
-  openSheet(h);
+  openSheet(h); sheetCtx = null;
+}
+let sheetCtx = null;
+// join the picked store groups into one named group (merging an already merged group absorbs it)
+function doMerge(id){
+  if (!sheetCtx || sheetCtx.picked.size < 2) { toast('მონიშნე მინიმუმ 2 მაღაზია'); return; }
+  const groups = sheetCtx.list.filter(o => sheetCtx.picked.has(o.key));
+  const keys = new Set(); const oldIds = new Set();
+  for (const o of groups) { o.keys.forEach(k => keys.add(k)); if (o.merged) { o.merged.keys.forEach(k => keys.add(k)); oldIds.add(o.merged.id); } }
+  const biggest = groups.slice().sort((a, b) => b.sum - a.sum)[0];
+  const name = prompt('გაერთიანებული მაღაზიის სახელი:', biggest.name);
+  if (name === null) return;
+  state.merges = state.merges.filter(m => !oldIds.has(m.id));
+  state.merges.push({ id: uid(), name: name.trim() || biggest.name, keys: [...keys] });
+  save(); toast(`გაერთიანდა: ${groups.length} სახელი → „${name.trim() || biggest.name}“`);
+  openCat(id);
 }
 function openTx(id){
   const t = state.tx.find(x => x.id === id); if (!t) return;
@@ -1108,6 +1157,15 @@ function viewMore(R){
       <button class="del" data-act="delacct" data-iban="${esc(iban)}" aria-label="ანგარიშის წაშლა">✕</button></div>`;
   }
   h += `<p class="small muted" style="margin:8px 0 0">გადარიცხვები ამ ანგარიშებს შორის ავტომატურად „შიდად“ ითვლება და არც ხარჯში, არც შემოსავალში არ შედის.</p></div>`;
+  // merged stores
+  h += `<details class="sec"><summary><h2>გაერთიანებული მაღაზიები</h2><span class="sum">${state.merges.length}</span></summary><div class="body">
+    <p class="hint">იქმნება მიმოხილვაზე: კატეგორია → „გაერთიანება“. ✕ აბრუნებს ცალ-ცალკე სახელებს. ტრანზაქციები და კატეგორიები არ იცვლება.</p>`;
+  for (const m of state.merges) {
+    const names = [...new Set(state.tx.filter(t => m.keys.includes(normKey(t.merchant))).map(t => t.merchant))];
+    h += `<div class="list-row"><div class="grow"><div class="wrap"><b>${esc(m.name)}</b></div><div class="small muted wrap">${names.length ? names.map(esc).join(', ') : esc(m.keys.join(', '))}</div></div><button class="del" data-act="unmerge" data-id="${m.id}" aria-label="გაერთიანების გაუქმება">✕</button></div>`;
+  }
+  if (!state.merges.length) h += `<div class="empty">ჯერ არაფერი გაერთიანებულა.</div>`;
+  h += `</div></details>`;
   // rules
   const rules = state.rules.filter(r => r.itemId === '__internal' || r.itemId === '__none' || IDX.has(r.itemId));
   h += `<details class="sec"><summary><h2>კატეგორიზაციის წესები</h2><span class="sum">${rules.length}</span></summary><div class="body">
@@ -1153,6 +1211,11 @@ function onAct(e){
   if (a === 'filt') { ui.txFilter = b.dataset.v; ui.keepScroll = true; render(); return; }
   if (a === 'tx') { openTx(b.dataset.id); return; }
   if (a === 'cat') { openCat(b.dataset.id); return; }
+  if (a === 'merge-on') { openCat(b.dataset.id, true); return; }
+  if (a === 'merge-off') { openCat(b.dataset.id); return; }
+  if (a === 'store-pick') { if (sheetCtx) { const k = b.dataset.key; b.checked ? sheetCtx.picked.add(k) : sheetCtx.picked.delete(k); const btn = sheet.querySelector('[data-act="merge-do"]'); if (btn) btn.textContent = `გაერთიანება (${sheetCtx.picked.size})`; } return; }
+  if (a === 'merge-do') { doMerge(b.dataset.id); return; }
+  if (a === 'unmerge') { const m = state.merges.find(g => g.id === b.dataset.id); if (!m || !confirm(`„${m.name}“ — გაერთიანება გაუქმდეს?`)) return; state.merges = state.merges.filter(g => g.id !== m.id); save(); ui.keepScroll = true; render(); return; }
   if (a === 'theme') { state.settings.theme = b.dataset.v; applyTheme(); save(); ui.keepScroll = true; render(); return; }
   if (a === 'setcat') { setCat(b.dataset.id, b.dataset.cat); return; }
   if (a === 'clearcat') { const t = state.tx.find(x => x.id === b.dataset.id); if (t) delete t.cat; save(); closeSheet(); ui.keepScroll = true; render(); return; }
