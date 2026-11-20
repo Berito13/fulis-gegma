@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2a78d6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ფულის გეგმა">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>ფულის გეგმა</title>
+<style>
+:root{
+  color-scheme: light;
+  --desk:#e9e8e4; --bezel:#1d1d1f;
+  --bg:#f4f4f2; --surface:#fcfcfb; --surface-2:#f0efec; --border:#e2e1dc; --border-strong:#c9c8c1;
+  --text:#0b0b0b; --text-2:#52514e; --muted:#7a7975;
+  --accent:#2a78d6; --accent-soft:#e3eefb; --accent-ink:#ffffff;
+  --series-1:#2a78d6; --series-2:#eb6834; --ref:#8a8984;
+  --pos:#006300; --neg:#b42318; --critical:#d03b3b; --warning:#fab219;
+  --warn-bg:#fdf3dc; --bad-bg:#fbe6e4; --good-bg:#e5f3e5;
+  --bar:#2a78d6; --bar-track:#e9e8e4;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --desk:#0c0c0b; --bezel:#3a3a3c;
+    --bg:#121211; --surface:#1a1a19; --surface-2:#242422; --border:#2f2f2c; --border-strong:#45453f;
+    --text:#f0efec; --text-2:#c3c2b7; --muted:#8f8e86;
+    --accent:#3987e5; --accent-soft:#1d2b3d; --accent-ink:#ffffff;
+    --series-1:#3987e5; --series-2:#d95926; --ref:#8f8e86;
+    --pos:#4cc24c; --neg:#f27b6f; --critical:#e66767; --warning:#fab219;
+    --warn-bg:#3a3017; --bad-bg:#3d1f1c; --good-bg:#1c3320;
+    --bar:#3987e5; --bar-track:#2f2f2c;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --desk:#0c0c0b; --bezel:#3a3a3c;
+  --bg:#121211; --surface:#1a1a19; --surface-2:#242422; --border:#2f2f2c; --border-strong:#45453f;
+  --text:#f0efec; --text-2:#c3c2b7; --muted:#8f8e86;
+  --accent:#3987e5; --accent-soft:#1d2b3d; --accent-ink:#ffffff;
+  --series-1:#3987e5; --series-2:#d95926; --ref:#8f8e86;
+  --pos:#4cc24c; --neg:#f27b6f; --critical:#e66767; --warning:#fab219;
+  --warn-bg:#3a3017; --bad-bg:#3d1f1c; --good-bg:#1c3320;
+  --bar:#3987e5; --bar-track:#2f2f2c;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--desk);color:var(--text);font:14px/1.45 "Segoe UI","Noto Sans Georgian","Sylfaen",system-ui,-apple-system,sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}
+button,input,select{font:inherit;color:inherit}
+.desk-note{font-size:12px;color:var(--muted);margin:10px 0 0;text-align:center}
+
+/* phone frame on desktop, full screen on a phone */
+.phone{width:400px;height:min(860px,calc(100vh - 56px));background:var(--bg);border:11px solid var(--bezel);border-radius:46px;
+  box-shadow:0 20px 60px rgba(0,0,0,.25);overflow:hidden;position:relative;display:flex;flex-direction:column}
+@media (max-width:520px), (display-mode:standalone){
+  body{display:block;background:var(--bg)}
+  .phone{width:100%;height:100vh;height:100dvh;border:0;border-radius:0;box-shadow:none}
+  .desk-note{display:none}
+  .appbar{padding-top:calc(12px + env(safe-area-inset-top))}
+  /* iPhone zooms into any input with text smaller than 16px — keep inputs at 16px on phones */
+  .in,.item .r2 .in,.mgrid .in{font-size:16px}
+}
+
+.appbar{padding:16px 16px 10px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex:none}
+.appbar h1{font-size:18px;margin:0;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msw{display:inline-flex;align-items:center;gap:2px;background:var(--surface-2);border-radius:10px;padding:2px}
+.msw button{border:0;background:transparent;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;color:var(--text-2)}
+.msw button:hover{background:var(--border)}
+.msw span{min-width:92px;text-align:center;font-weight:600;font-size:13px}
+main{flex:1;overflow-y:auto;padding:12px 12px calc(84px + env(safe-area-inset-bottom));scroll-behavior:smooth}
+main::-webkit-scrollbar{width:0}
+
+nav.tabs{position:absolute;left:0;right:0;bottom:0;height:calc(64px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--surface);border-top:1px solid var(--border);display:flex;z-index:10}
+nav.tabs button{flex:1;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;color:var(--muted);cursor:pointer;position:relative}
+nav.tabs button svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav.tabs button.on{color:var(--accent);font-weight:600}
+nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--critical);color:#fff;border-radius:9px;font-size:10px;min-width:17px;height:17px;line-height:17px;padding:0 4px;font-weight:700}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 10px;font-weight:700;display:flex;align-items:baseline;gap:8px}
+.card h2 .r{margin-left:auto;font-size:12px;font-weight:500;color:var(--muted)}
+.muted{color:var(--muted)} .t2{color:var(--text-2)} .small{font-size:12px}
+.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.pos{color:var(--pos)} .neg{color:var(--neg)}
+
+.trio{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px 10px;align-items:baseline}
+.trio .h{font-size:11px;color:var(--muted);text-align:right}
+.trio .l{color:var(--text-2)}
+.trio .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.trio .sep{grid-column:1/-1;border-top:1px solid var(--border);margin:2px 0}
+
+.cat{padding:9px 0;border-bottom:1px solid var(--border);cursor:default}
+.cat:last-child{border-bottom:0}
+.cat .top{display:flex;align-items:baseline;gap:8px}
+.cat .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cat .amt{font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cat .amt b{font-weight:700}
+.track{height:6px;background:var(--bar-track);border-radius:4px;margin-top:6px;overflow:hidden;display:flex}
+.track i{display:block;height:100%;background:var(--bar);border-radius:4px}
+.track i.over{background:var(--critical)}
+.track i.unpl{background:var(--series-2)}
+.flag{font-size:11px;font-weight:600;border-radius:6px;padding:1px 6px;white-space:nowrap}
+.flag.over{background:var(--bad-bg);color:var(--neg)}
+.flag.ok{background:var(--good-bg);color:var(--pos)}
+.flag.unpl{background:var(--warn-bg);color:var(--text)}
+.link{color:var(--accent);background:none;border:0;padding:0;cursor:pointer;font-weight:600}
+
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.kpi{background:var(--surface-2);border-radius:12px;padding:9px 10px}
+.kpi .l{font-size:11px;color:var(--text-2);line-height:1.3}
+.kpi .v{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi.warn{background:var(--warn-bg)} .kpi.bad{background:var(--bad-bg)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-2);margin-bottom:6px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.sw{width:14px;height:3px;border-radius:2px;display:inline-block}
+.sw.dash{background:repeating-linear-gradient(90deg,var(--ref) 0 4px,transparent 4px 7px);height:2px}
+.chartbox{position:relative;touch-action:pan-y}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border-strong);border-radius:10px;padding:7px 9px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.14);display:none;z-index:5;min-width:170px}
+.tip b{display:block;margin-bottom:3px}
+.tip .row{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}
+.tip .row span:first-child{display:inline-flex;align-items:center;gap:5px;color:var(--text-2)}
+
+.mrow{display:grid;grid-template-columns:62px 1fr 1fr;gap:8px;padding:8px 6px;border-bottom:1px solid var(--border);align-items:center;cursor:pointer;border-radius:8px}
+.mrow:last-child{border-bottom:0}
+.mrow:hover{background:var(--surface-2)}
+.mrow.sel{background:var(--accent-soft)}
+.mrow .v{text-align:right;font-variant-numeric:tabular-nums}
+.mrow .tg{font-size:10px;border-radius:5px;padding:0 5px;background:var(--surface-2);color:var(--text-2);margin-left:4px}
+.mrow .tg.f{background:var(--good-bg);color:var(--pos)}
+.mrow.hd{cursor:default;font-size:11px;color:var(--muted);padding-top:0}
+.mrow.hd:hover{background:none}
+.lowv{color:var(--neg);font-weight:700}
+
+.btn{border:1px solid var(--border-strong);background:var(--surface);padding:9px 14px;border-radius:12px;cursor:pointer;font-weight:600}
+.btn:hover{background:var(--surface-2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.block{display:block;width:100%}
+.btn.danger{color:var(--neg)}
+.btns{display:flex;flex-direction:column;gap:8px}
+.seg{display:flex;background:var(--surface-2);border-radius:10px;padding:3px;gap:3px;margin-bottom:10px}
+.seg button{flex:1;border:0;background:transparent;padding:6px 4px;border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-2)}
+.seg button.on{background:var(--surface);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.day{font-size:12px;color:var(--muted);margin:12px 4px 4px;font-weight:600}
+.tx{display:flex;gap:10px;align-items:center;padding:9px 10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:6px;cursor:pointer}
+.tx:hover{border-color:var(--border-strong)}
+.tx .ic{width:34px;height:34px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+.tx .ic.TBC{background:#00a3e0} .tx .ic.BOG{background:#ff6b00}
+.tx .mid{flex:1;min-width:0}
+.tx .m{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx .s{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx .rt{text-align:right;flex:none;max-width:42%}
+.tx .a{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.chipc{display:inline-block;font-size:11px;border-radius:6px;padding:1px 6px;margin-top:2px;background:var(--surface-2);color:var(--text-2);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:top}
+.chipc.none{background:var(--warn-bg);color:var(--text)}
+.chipc.int{background:transparent;border:1px dashed var(--border-strong)}
+.tx.internal{opacity:.6}
+
+.drop{border:2px dashed var(--border-strong);border-radius:16px;padding:16px;text-align:center;background:var(--surface);margin-bottom:12px}
+.drop.hover{border-color:var(--accent);background:var(--accent-soft)}
+.drop p{margin:6px 0 10px;font-size:12px;color:var(--muted)}
+
+/* plan editor */
+.sec{margin-bottom:12px}
+.sec > summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:8px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:16px}
+.sec[open] > summary{border-radius:16px 16px 0 0;border-bottom:0}
+.sec > summary::-webkit-details-marker{display:none}
+.sec > summary h2{font-size:15px;margin:0;font-weight:700}
+.sec > summary .sum{margin-left:auto;font-size:12px;color:var(--text-2);white-space:nowrap}
+.sec .body{background:var(--surface);border:1px solid var(--border);border-top:0;border-radius:0 0 16px 16px;padding:0 12px 12px}
+.hint{font-size:12px;color:var(--muted);margin:0 0 10px}
+.item{border:1px solid var(--border);border-radius:12px;padding:8px;margin-bottom:8px}
+.item .r1{display:grid;grid-template-columns:minmax(0,1fr) 86px 62px 26px;gap:5px;align-items:center}
+.item .r2{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:7px;font-size:12px;color:var(--text-2)}
+.item .r2 label{display:inline-flex;align-items:center;gap:5px;max-width:100%;min-width:0}
+.item .r2 .in{width:auto;padding:4px 6px;font-size:12px;max-width:100%;min-width:0}
+.item .r2 select.in{flex:1 1 auto;min-width:120px}
+.in{width:100%;border:1px solid var(--border-strong);background:var(--surface);border-radius:9px;padding:7px 8px;min-width:0}
+.in:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:transparent}
+.in.n{text-align:right;font-variant-numeric:tabular-nums}
+select.in{padding:6px 4px}
+.del{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:5px;border-radius:7px}
+.del:hover{background:var(--bad-bg);color:var(--neg)}
+.chips{display:flex;flex-wrap:wrap;gap:3px}
+.chip{border:1px solid var(--border-strong);background:var(--surface);border-radius:7px;padding:2px 6px;font-size:11px;cursor:pointer}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.add{width:100%;border:1px dashed var(--border-strong);background:transparent;border-radius:12px;padding:8px;cursor:pointer;color:var(--text-2)}
+.add:hover{background:var(--surface-2)}
+.goalinfo{font-size:12px;color:var(--text-2);margin-top:6px}
+.mgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px}
+.mgrid label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--text-2)}
+.mgrid .in{padding:5px 6px;font-size:13px}
+.mtot{font-size:12px;color:var(--text-2);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text-2)}
+.list-row{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.list-row:last-child{border-bottom:0}
+.list-row .grow{flex:1;min-width:0}
+.list-row .grow div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* bottom sheet */
+.sheet-bg{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:30;display:flex;align-items:flex-end}
+.sheet-bg[hidden]{display:none}
+.sheet{width:100%;max-height:88%;overflow-y:auto;background:var(--surface);border-radius:20px 20px 0 0;padding:8px 16px calc(20px + env(safe-area-inset-bottom));animation:up .18s ease-out}
+@keyframes up{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+.grab{width:40px;height:5px;border-radius:3px;background:var(--border-strong);margin:4px auto 10px}
+.sheet h3{margin:0 0 2px;font-size:16px}
+.sheet .det{font-size:11px;color:var(--muted);word-break:break-word;margin:6px 0 10px;background:var(--surface-2);border-radius:8px;padding:6px 8px}
+.opts{display:flex;flex-direction:column;gap:6px;margin:8px 0 12px}
+.opts label{display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer}
+.opts input{margin-top:3px}
+.cgrid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.cbtn{border:1px solid var(--border-strong);background:var(--surface);border-radius:10px;padding:7px 10px;cursor:pointer;font-size:13px}
+.cbtn:hover{background:var(--surface-2)}
+.cbtn.cur{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.cbtn.special{border-style:dashed}
+.ghead{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:10px 0 6px}
+
+.toast{position:absolute;left:12px;right:12px;bottom:calc(76px + env(safe-area-inset-bottom));background:var(--text);color:var(--bg);border-radius:12px;padding:10px 12px;font-size:13px;z-index:40;box-shadow:0 6px 20px rgba(0,0,0,.25);display:none}
+.empty{text-align:center;color:var(--muted);font-size:13px;padding:18px 8px}
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+  <header class="appbar">
+    <h1 id="title">მიმოხილვა</h1>
+    <div class="msw" id="msw"><button data-act="mprev" aria-label="წინა თვე">‹</button><span id="mlabel"></span><button data-act="mnext" aria-label="შემდეგი თვე">›</button></div>
+  </header>
+  <main id="main"></main>
+  <nav class="tabs" id="tabs">
+    <button data-tab="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>მიმოხილვა</button>
+    <button data-tab="tx"><svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>ტრანზაქციები<span class="badge" id="badge" hidden></span></button>
+    <button data-tab="plan"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 15l4-4 3 3 5-6"/></svg>გეგმა</button>
+    <button data-tab="more"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>პარამეტრები</button>
+  </nav>
+  <div class="sheet-bg" id="sheetBg" hidden><div class="sheet" id="sheet"></div></div>
+  <div class="toast" id="toast"></div>
+  <input type="file" id="fileIn" accept=".xlsx" multiple hidden>
+  <input type="file" id="backupIn" accept=".json,application/json" hidden>
+</div>
+<p class="desk-note">დესკტოპის რეჟიმი: აპლიკაცია ზუსტად ისე ჩანს, როგორც ტელეფონზე გამოჩნდება.</p>
+
+<script>
+(function(){
+'use strict';
+/* =================== utils =================== */
+const KEY = 'personal-cashflow-app-v2';
+const MN = ['იან','თებ','მარ','აპრ','მაი','ივნ','ივლ','აგვ','სექ','ოქტ','ნოე','დეკ'];
+const MNL = ['იანვარი','თებერვალი','მარტი','აპრილი','მაისი','ივნისი','ივლისი','აგვისტო','სექტემბერი','ოქტომბერი','ნოემბერი','დეკემბერი'];
+const uid = () => Math.random().toString(36).slice(2, 10);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ymToIdx = ym => { if (!ym || !/^\d{4}-\d{2}/.test(ym)) return null; return (+ym.slice(0, 4)) * 12 + (+ym.slice(5, 7)) - 1; };
+const idxToYm = i => Math.floor(i / 12) + '-' + String(i % 12 + 1).padStart(2, '0');
+const mShort = i => MN[i % 12] + ' ' + String(Math.floor(i / 12)).slice(2);
+const mLong = i => MNL[i % 12] + ' ' + Math.floor(i / 12);
+const nowIdx = () => { const d = new Date(); return d.getFullYear() * 12 + d.getMonth(); };
+const fmt = n => { const r = Math.round(n); return (r < 0 ? '−' : '') + Math.abs(r).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); };
+const fmt2 = n => { const a = Math.abs(n); const s = a.toFixed(2).replace(/\B(?=(\d{3})+(?!\d)\.)/g, ' '); return (n < 0 ? '−' : '') + s; };
+const money = n => fmt(n) + ' ₾';
+const toNum = v => { if (v == null || v === '') return null; if (typeof v === 'number') return v; const s = String(v).replace(/[\s,]/g, ''); const n = parseFloat(s); return isNaN(n) ? null : n; };
+const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
+const fmtDate = d => { const [y, m, dd] = d.split('-'); return (+dd) + ' ' + MN[+m - 1]; };
+const IBAN_RE = /GE\d{2}[A-Z]{2}\d{16}/;
+const maskIban = s => s && s.length > 8 ? s.slice(0, 4) + '…' + s.slice(-4) : s;
+
+/* =================== state =================== */
+function sample(){
+  const s = nowIdx();
+  const id = () => uid();
+  const sal = id(), loans = id(), util = id(), fees = id(), food = id(), cafe = id(), trans = id(), health = id(), clothes = id(), fun = id(), other = id();
+  const R = (value, itemId) => ({ id: uid(), type: 'bankcat', value: value.toLowerCase(), itemId });
+  return {
+    version: 2,
+    settings: { start: idxToYm(s), horizon: 12, opening: 5000, buffer: 1500, usdRate: 2.7, eurRate: 3.1, scenario: 'base', varPct: 10, dropUncertain: true },
+    income: [
+      { id: sal, name: 'ხელფასი', amount: 4500, cur: 'GEL', repeat: true, byMonth: {}, start: '', end: '', uncertain: false }
+    ],
+    fixed: [
+      { id: loans, name: 'სესხები და იპოთეკა', amount: 1700, cur: 'GEL', repeat: true, byMonth: {}, start: '', end: '' },
+      { id: util, name: 'კომუნალური და მობილური', amount: 150, cur: 'GEL', repeat: true, byMonth: {}, start: '', end: '' },
+      { id: fees, name: 'ბანკის საკომისიოები', amount: 45, cur: 'GEL', repeat: true, byMonth: {}, start: '', end: '' }
+    ],
+    variable: [
+      { id: food, name: 'საკვები / მარკეტები', amount: 900, cur: 'GEL', repeat: true, byMonth: {} },
+      { id: cafe, name: 'კაფე და მიწოდება', amount: 300, cur: 'GEL', repeat: true, byMonth: {} },
+      { id: trans, name: 'ტრანსპორტი და საწვავი', amount: 250, cur: 'GEL', repeat: true, byMonth: {} },
+      { id: health, name: 'ჯანმრთელობა / აფთიაქი', amount: 120, cur: 'GEL', repeat: true, byMonth: {} },
+      { id: clothes, name: 'ტანსაცმელი', amount: 200, cur: 'GEL', repeat: true, byMonth: {} },
+      { id: fun, name: 'გართობა', amount: 150, cur: 'GEL', repeat: true, byMonth: {} },
+      { id: other, name: 'სხვა', amount: 200, cur: 'GEL', repeat: true, byMonth: {} }
+    ],
+    annual: [
+      { id: id(), name: 'მანქანის დაზღვევა', amount: 600, cur: 'GEL', months: [5] },
+      { id: id(), name: 'შვებულება', amount: 3000, cur: 'GEL', months: [8] },
+      { id: id(), name: 'საახალწლო ხარჯები', amount: 800, cur: 'GEL', months: [12] }
+    ],
+    oneoff: [],
+    goals: [
+      { id: id(), name: 'სარეზერვო ფონდი', target: 10000, saved: 2000, deadline: idxToYm(s + 11), spend: false }
+    ],
+    rules: [
+      R('ხელფასი', sal),
+      R('სასურსათო მაღაზიები', food), R('სუპერმარკეტები', food), R('საკვების მაღაზიები', food),
+      R('კაფე / სწრაფი კვება', cafe), R('რესტორნები', cafe), R('ბარები', cafe),
+      R('კომუნალური, მობილური, ჯარიმები', util), R('კომუნალური', util), R('კავშირგაბმულობა', util),
+      R('სესხის დაფარვა', loans), R('სესხის დაზღვევა', loans),
+      R('ბანკის საკომისიო', fees),
+      R('საწვავი', trans), R('ტაქსი', trans), R('ტრანსპორტი', trans), R('პარკინგი', trans),
+      R('აფთიაქი', health), R('სამედიცინო', health),
+      R('ტანსაცმელი', clothes), R('გართობა', fun)
+    ],
+    tx: [], accounts: {}, imports: []
+  };
+}
+function blank(){
+  const st = sample();
+  for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff', 'goals', 'rules', 'tx', 'imports']) st[k] = [];
+  st.accounts = {}; st.settings.opening = 0; st.settings.buffer = 0;
+  return st;
+}
+function normalize(st){
+  if (!st || typeof st !== 'object' || !st.settings) return null;
+  const b = blank();
+  const out = { version: 2, settings: Object.assign({}, b.settings, st.settings), accounts: st.accounts && typeof st.accounts === 'object' ? st.accounts : {} };
+  for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff', 'goals', 'rules', 'tx', 'imports']) out[k] = Array.isArray(st[k]) ? st[k] : [];
+  for (const k of ['income', 'fixed', 'variable']) for (const it of out[k]) migrateItem(it, out.settings, k);
+  return out;
+}
+// older saves had one amount (+ "months"/"once" schedule for income); convert to repeat / per-month amounts
+function migrateItem(it, S, kind){
+  if (it.repeat !== undefined) { if (!it.byMonth || typeof it.byMonth !== 'object') it.byMonth = {}; return; }
+  it.byMonth = {};
+  if (kind === 'income' && it.sched === 'months') {
+    it.repeat = false;
+    const s0 = ymToIdx(S.start) ?? nowIdx(), H = +S.horizon || 12, a = ymToIdx(it.start), b = ymToIdx(it.end);
+    for (let i = s0; i < s0 + H; i++) if ((it.months || []).includes(i % 12 + 1) && (a == null || i >= a) && (b == null || i <= b)) it.byMonth[idxToYm(i)] = it.amount;
+  } else if (kind === 'income' && it.sched === 'once') { it.repeat = false; if (it.once) it.byMonth[it.once] = it.amount; }
+  else it.repeat = true;
+}
+let state = null;
+try { const raw = localStorage.getItem(KEY); if (raw) state = normalize(JSON.parse(raw)); } catch (e) { state = null; }
+let storageOk = true;
+const firstRun = !state;
+if (!state) state = sample();
+let saveT = null;
+function save(){
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); storageOk = true; }
+    catch (e) { if (storageOk) toast('⚠ ბრაუზერმა მონაცემები ვერ შეინახა. ჩამოტვირთე სარეზერვო ფაილი (პარამეტრები).', 6000); storageOk = false; }
+  }, 250);
+}
+if (firstRun) save();
+
+const ui = { tab: 'home', month: null, txFilter: 'all', openSec: {} };
+
+/* =================== plan model =================== */
+const rateOf = cur => cur === 'USD' ? (+state.settings.usdRate || 0) : cur === 'EUR' ? (+state.settings.eurRate || 0) : 1;
+const gel = (a, c) => (+a || 0) * rateOf(c);
+function compute(){
+  const S = state.settings;
+  const s0 = ymToIdx(S.start) ?? nowIdx();
+  const H = Math.max(1, Math.min(60, +S.horizon || 12));
+  const cons = S.scenario === 'cons';
+  const active = (it, i) => { const a = ymToIdx(it.start), b = ymToIdx(it.end); return (a == null || i >= a) && (b == null || i <= b); };
+  const M = Array.from({ length: H }, (_, k) => s0 + k);
+  const ser = (items, fn) => items.map(it => ({ it, v: M.map(i => fn(it, i)) }));
+  const G = {};
+  // "repeat" = one standard amount every month (within start/end); otherwise the amount typed for each month
+  const pv = (it, i) => it.repeat ? (active(it, i) ? gel(it.amount, it.cur) : 0) : gel((it.byMonth || {})[idxToYm(i)], it.cur);
+  G.income = ser(state.income, (it, i) => (cons && it.uncertain && S.dropUncertain) ? 0 : pv(it, i));
+  G.fixed = ser(state.fixed, pv);
+  const vf = cons ? 1 + (+S.varPct || 0) / 100 : 1;
+  G.variable = ser(state.variable, (it, i) => pv(it, i) * vf);
+  G.annual = ser(state.annual, (it, i) => (it.months || []).includes(i % 12 + 1) ? gel(it.amount, it.cur) : 0);
+  G.oneoff = ser(state.oneoff, (it, i) => ymToIdx(it.month) === i ? gel(it.amount, it.cur) : 0);
+  G.goalspend = ser(state.goals.filter(g => g.spend), (it, i) => ymToIdx(it.deadline) === i ? (+it.target || 0) : 0);
+  const tot = {};
+  for (const k in G) tot[k] = M.map((_, j) => G[k].reduce((a, r) => a + r.v[j], 0));
+  const byId = {};
+  for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff']) for (const r of G[k]) byId[r.it.id] = { kind: k, v: r.v };
+
+  const resAnn = M.map(i => {
+    const c = i % 12 + 1; let r = 0;
+    for (const it of state.annual) {
+      const ps = [...new Set(it.months || [])].sort((a, b) => a - b); const amt = gel(it.amount, it.cur);
+      ps.forEach((p, j) => { const prev = ps[(j - 1 + ps.length) % ps.length]; const L = ((p - prev + 11) % 12) + 1; const d = (c - prev + 12) % 12; if (d > 0 && d < L) r += amt * d / L; });
+    }
+    for (const it of state.oneoff) {
+      const j = ymToIdx(it.month); if (j == null || j < s0) continue;
+      if (i < j) r += gel(it.amount, it.cur) * (i - s0 + 1) / (j - s0 + 1);
+    }
+    return r;
+  });
+  const goalInfo = state.goals.map(g => {
+    const n = (ymToIdx(g.deadline) ?? s0) - s0 + 1; const target = +g.target || 0, saved = +g.saved || 0;
+    return { g, n, target, saved, monthly: n > 0 ? Math.max(0, target - saved) / n : 0 };
+  });
+  const resGoal = M.map((_, k) => goalInfo.reduce((a, x) => {
+    if (x.n <= 0) return a + (x.g.spend ? 0 : Math.min(x.saved, x.target || x.saved));
+    if (k < x.n - 1) return a + Math.min(x.target, x.saved + x.monthly * (k + 1));
+    return a + (x.g.spend ? 0 : x.target);
+  }, 0));
+  const expTot = M.map((_, j) => tot.fixed[j] + tot.variable[j] + tot.annual[j] + tot.oneoff[j] + tot.goalspend[j]);
+  const net = M.map((_, j) => tot.income[j] - expTot[j]);
+  const bal = []; let b = +S.opening || 0; net.forEach(n => { b += n; bal.push(b); });
+
+  // fact: completed months with statements replace the plan
+  const fm = factByMonth(); const cur = nowIdx();
+  const isFact = M.map(i => fm.has(i) && i < cur);
+  const fc = []; let fb = +S.opening || 0;
+  M.forEach((i, j) => { fb += isFact[j] ? fm.get(i).net : net[j]; fc.push(fb); });
+  const res = M.map((_, j) => resAnn[j] + resGoal[j]);
+  return { M, s0, H, G, tot, byId, expTot, net, bal, res, free: bal.map((v, j) => v - res[j]), fc, fcFree: fc.map((v, j) => v - res[j]), isFact, fm, goalInfo, buffer: +S.buffer || 0 };
+}
+
+/* =================== categorisation =================== */
+const KIND_NAME = { income: 'შემოსავალი', fixed: 'ფიქსირებული', variable: 'ცვლადი', annual: 'წლიური', oneoff: 'ერთჯერადი' };
+function itemIndex(){
+  const m = new Map();
+  for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff']) for (const it of state[k]) m.set(it.id, { kind: k, it });
+  return m;
+}
+let IDX = itemIndex();
+let OWN = new Set(Object.keys(state.accounts));
+function refreshIndex(){ IDX = itemIndex(); OWN = new Set(Object.keys(state.accounts)); }
+function autoInternal(t){
+  if (t.op === 'FX' || /^კონვერტაცია/.test(t.desc || '')) return true;
+  if (t.partnerAcct && OWN.has(t.partnerAcct)) return true;
+  return false;
+}
+function ruleFor(t){
+  const m = (t.merchant || '').toLowerCase(), c = (t.bankCat || '').toLowerCase();
+  let r = state.rules.find(x => x.type === 'merchant' && x.value === m && m);
+  if (!r) r = state.rules.find(x => x.type === 'bankcat' && x.value === c && c);
+  return r && (r.itemId === '__internal' || r.itemId === '__none' || IDX.has(r.itemId)) ? r : null;
+}
+// returns {cat, src}: cat = itemId | '__internal' | null ; src = manual | auto | rule | null
+function effCat(t){
+  if (t.cat) {
+    if (t.cat === '__internal') return { cat: '__internal', src: 'manual' };
+    if (t.cat === '__none') return { cat: null, src: 'manual' };
+    if (IDX.has(t.cat)) return { cat: t.cat, src: 'manual' };
+  }
+  if (autoInternal(t)) return { cat: '__internal', src: 'auto' };
+  const r = ruleFor(t);
+  if (r) return { cat: r.itemId === '__none' ? null : r.itemId, src: 'rule' };
+  return { cat: null, src: null };
+}
+const txGel = t => (+t.amt || 0) * rateOf(t.cur);
+function factByMonth(){
+  const m = new Map();
+  for (const t of state.tx) {
+    const i = ymToIdx(t.date); if (i == null) continue;
+    let f = m.get(i); if (!f) { f = { net: 0, byItem: {}, unIn: 0, unOut: 0, unc: 0, internal: 0, n: 0 }; m.set(i, f); }
+    f.n++;
+    const { cat } = effCat(t); const a = txGel(t);
+    if (cat === '__internal') { f.internal++; continue; }
+    f.net += a;
+    if (cat) f.byItem[cat] = (f.byItem[cat] || 0) + a;
+    else { f.unc++; if (a < 0) f.unOut -= a; else f.unIn += a; }
+  }
+  return m;
+}
+
+/* =================== xlsx reader (no libraries) =================== */
+async function inflateRaw(u8){
+  if (typeof DecompressionStream === 'undefined') throw new Error('ბრაუზერი ძველია — გამოიყენე Chrome/Edge/Safari-ის ახალი ვერსია');
+  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function unzip(buf){
+  const u8 = new Uint8Array(buf), dv = new DataView(buf), td = new TextDecoder();
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error('ეს xlsx ფაილი არ არის');
+  const n = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true);
+  const files = {};
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+    const nlen = dv.getUint16(p + 28, true), xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    files[td.decode(u8.subarray(p + 46, p + 46 + nlen))] = { method, csize, off };
+    p += 46 + nlen + xlen + clen;
+  }
+  return {
+    async text(name){
+      const f = files[name]; if (!f) return null;
+      const start = f.off + 30 + dv.getUint16(f.off + 26, true) + dv.getUint16(f.off + 28, true);
+      const data = u8.subarray(start, start + f.csize);
+      return td.decode(f.method === 0 ? data : await inflateRaw(data));
+    }
+  };
+}
+async function readXlsx(buf){
+  const z = await unzip(buf); const P = new DOMParser(); const X = t => P.parseFromString(t, 'application/xml');
+  const wbT = await z.text('xl/workbook.xml'); if (!wbT) throw new Error('ეს Excel-ის ფაილი არ არის');
+  const wb = X(wbT);
+  const rels = {}; const relT = await z.text('xl/_rels/workbook.xml.rels');
+  if (relT) for (const r of X(relT).getElementsByTagName('Relationship')) rels[r.getAttribute('Id')] = r.getAttribute('Target');
+  const ss = []; const ssT = await z.text('xl/sharedStrings.xml');
+  if (ssT) for (const si of X(ssT).getElementsByTagName('si')) { let s = ''; for (const t of si.getElementsByTagName('t')) if (t.parentNode.nodeName !== 'rPh') s += t.textContent; ss.push(s); }
+  const sheets = [];
+  for (const sh of wb.getElementsByTagName('sheet')) {
+    const rid = sh.getAttribute('r:id') || sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+    let tgt = rels[rid]; if (!tgt) continue;
+    tgt = tgt.startsWith('/') ? tgt.slice(1) : 'xl/' + tgt.replace(/^\.\//, '');
+    const sx = await z.text(tgt); if (!sx) continue;
+    const rows = [];
+    for (const c of X(sx).getElementsByTagName('c')) {
+      const m = /^([A-Z]+)(\d+)$/.exec(c.getAttribute('r') || ''); if (!m) continue;
+      let col = 0; for (const ch of m[1]) col = col * 26 + ch.charCodeAt(0) - 64; col--;
+      const row = +m[2] - 1; const t = c.getAttribute('t'); const vEl = c.getElementsByTagName('v')[0];
+      let v = null;
+      if (t === 's') v = vEl ? ss[+vEl.textContent] : null;
+      else if (t === 'inlineStr') { const is = c.getElementsByTagName('is')[0]; v = is ? [...is.getElementsByTagName('t')].map(x => x.textContent).join('') : null; }
+      else if (t === 'str' || t === 'e') v = vEl ? vEl.textContent : null;
+      else if (t === 'b') v = vEl ? vEl.textContent === '1' : null;
+      else v = vEl ? +vEl.textContent : null;
+      (rows[row] || (rows[row] = []))[col] = v;
+    }
+    sheets.push({ name: sh.getAttribute('name') || '', rows: Array.from(rows, r => r || []) });
+  }
+  return sheets;
+}
+function toDate(v){
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
+  const s = String(v).trim(); let m = /^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/.exec(s);
+  if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+  m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? m[0] : null;
+}
+const S_ = v => v == null ? '' : String(v).trim();
+
+/* ---------- TBC ---------- */
+const GENERIC_PARTNER = /ბანკ|სატრანზიტო|დებიტორები|ძირითადი თანხა|დარიცხული პროცენტი|დაზღვევის თანხები|ბარათებით/;
+function parseTBC(sheets){
+  const out = { bank: 'TBC', accounts: [], tx: [] };
+  let from = null, to = null, startBal = null;
+  for (const sh of sheets) for (const r of sh.rows) {
+    const k = S_(r[1]);
+    if (k === 'Filter Date From:') from = toDate(r[2]);
+    if (k === 'Filter Date To:') to = toDate(r[2]);
+    if (k === 'Starting Balance:') startBal = toNum(r[2]);
+  }
+  for (const sh of sheets) {
+    const r1 = sh.rows[1] || [];
+    if (!(S_(r1[0]) === 'Date' && r1.some(h => S_(h) === 'Transaction ID'))) continue;
+    const H = {}; r1.forEach((h, i) => { if (h != null) H[S_(h)] = i; });
+    const m = /^(GE\d{2}[A-Z]{2}\d{16})(?:-([A-Z]{3}))?/.exec(sh.name);
+    const acct = m ? m[1] : sh.name; const cur = (m && m[2]) || 'GEL';
+    out.accounts.push({ iban: acct, bank: 'TBC', cur, from, to, startBal });
+    for (let i = 2; i < sh.rows.length; i++) {
+      const r = sh.rows[i]; const date = toDate(r[H['Date']]); if (!date) continue;
+      const out_ = toNum(r[H['Paid Out']]) || 0, in_ = toNum(r[H['Paid In']]) || 0;
+      const amt = Math.round((in_ - out_) * 100) / 100; if (!amt) continue;
+      const desc = S_(r[H['Description']]), info = S_(r[H['Additional Information']]), type = S_(r[H['Type']]);
+      const op = S_(r[H['Op. Code']]), partner = S_(r[H["Partner's Name"]]), pAcct = S_(r[H["Partner's Account"]]);
+      const txid = S_(r[H['Transaction ID']]);
+      let merchant = '', bankCat = type;
+      const pos = /^POS(?:\s+wallet)?\s*-\s*(.+?),\s*[\d.,]+\s+[A-Z]{3},\s*[^,]*,\s*([^,]+)/.exec(desc);
+      if (pos) {
+        merchant = pos[1].trim(); bankCat = pos[2].trim();
+        const mm = /MCC:\s*(\d{4})/.exec(desc); if (mm && MCC[mm[1]]) bankCat = MCC[mm[1]];
+      }
+      else if (/^\*?MBS/.test(op)) { merchant = desc.replace(/^საკომისიო:\s*/, '').split(';')[0].trim(); if (/^საკომისიო/.test(desc) || op === 'MBSFE') bankCat = 'ბანკის საკომისიო'; }
+      else if (!partner || GENERIC_PARTNER.test(partner)) merchant = desc.split(/[;,]/)[0].trim();
+      else merchant = partner.split(',')[0].trim();
+      if (/^\*?LP(PR|IN)/.test(op) || /^(ძირითადი თანხის|პროცენტის) დაფარვა/.test(desc)) bankCat = 'სესხის დაფარვა';
+      else if (/INSP/.test(op)) bankCat = 'სესხის დაზღვევა';
+      else if (/TPC/.test(op) || /^საკომისიო/.test(desc) || /საკომისიო/.test(partner) && !pos) bankCat = 'ბანკის საკომისიო';
+      else if (/LDSB/.test(op)) bankCat = 'სესხის მიღება';
+      else if (['GMB', 'GMN', 'P2P'].includes(op)) { bankCat = 'პირადი გადარიცხვა'; if (op === 'P2P') merchant = 'P2P გადარიცხვა'; }
+      else if (/ხელფას/.test(desc)) bankCat = 'ხელფასი';
+      out.tx.push({ id: 'TBC:' + acct + ':' + (txid || hash(date + amt + desc)), bank: 'TBC', acct, date, amt, cur, desc, info, merchant: merchant || desc.slice(0, 40), bankCat, partnerAcct: (IBAN_RE.exec(pAcct) || [])[0] || '', op, card: '' });
+    }
+  }
+  return out;
+}
+
+/* ---------- Bank of Georgia ---------- */
+const MCC = {'5411':'სუპერმარკეტები','5412':'სუპერმარკეტები','5422':'საკვების მაღაზიები','5441':'საკვების მაღაზიები','5451':'საკვების მაღაზიები','5462':'საკვების მაღაზიები','5499':'საკვების მაღაზიები','5812':'რესტორნები','5813':'ბარები','5814':'კაფე / სწრაფი კვება','5541':'საწვავი','5542':'საწვავი','5983':'საწვავი','4121':'ტაქსი','4111':'ტრანსპორტი','4131':'ტრანსპორტი','7523':'პარკინგი','5912':'აფთიაქი','8011':'სამედიცინო','8021':'სამედიცინო','8062':'სამედიცინო','8071':'სამედიცინო','8099':'სამედიცინო','5651':'ტანსაცმელი','5661':'ტანსაცმელი','5691':'ტანსაცმელი','5699':'ტანსაცმელი','5311':'უნივერმაღები','5310':'უნივერმაღები','5331':'უნივერმაღები','5399':'უნივერმაღები','4814':'კავშირგაბმულობა','4899':'გამოწერები','4900':'კომუნალური','5732':'ელექტრონიკა','5045':'ელექტრონიკა','5200':'სახლი და რემონტი','5251':'სახლი და რემონტი','5712':'სახლი და რემონტი','5719':'სახლი და რემონტი','7230':'სილამაზე','5977':'სილამაზე','7997':'სპორტი','5941':'სპორტი','7832':'გართობა','7922':'გართობა','7996':'გართობა','5942':'წიგნები','5943':'წიგნები','8220':'განათლება','8299':'განათლება','4511':'მოგზაურობა','7011':'მოგზაურობა','4722':'მოგზაურობა','5921':'ალკოჰოლი და თამბაქო','5993':'ალკოჰოლი და თამბაქო','6011':'განაღდება','6010':'განაღდება','5815':'ციფრული სერვისები','5816':'ციფრული სერვისები','5817':'ციფრული სერვისები','5818':'ციფრული სერვისები','5995':'ცხოველები','0742':'ცხოველები','5641':'ბავშვები','5945':'ბავშვები','4829':'გადარიცხვები','6012':'ფინანსური მომსახურება','6051':'ფინანსური მომსახურება','9399':'სახელმწიფო მომსახურება','9311':'გადასახადები','4215':'კურიერი / ფოსტა','5039':'სახლი და რემონტი','5192':'წიგნები','5992':'ყვავილები','6538':'გადარიცხვები','5511':'მანქანა','5532':'მანქანა','5533':'მანქანა','5599':'მანქანა','7538':'მანქანა','7542':'მანქანა'};
+function parseBOG(sheets){
+  const out = { bank: 'BOG', accounts: [], tx: [] };
+  const det = sheets.find(s => s.rows.some(r => S_(r[0]) === 'ანგარიშის ნომერი:'));
+  const txs = sheets.find(s => { const h = (s.rows[0] || []).map(S_); return h[0] === 'თარიღი' && h.includes('დანიშნულება'); });
+  if (!txs) return out;
+  let acct = '', from = null, to = null, startBal = 0, haveBal = false, mode = '';
+  if (det) for (const r of det.rows) {
+    const label = S_(r[0]); const val = S_(r.slice(1).find(v => v != null && S_(v) !== ''));
+    if (label) mode = label;
+    if (label === 'ანგარიშის ნომერი:') acct = (IBAN_RE.exec(val) || [val])[0];
+    if (label === 'საწყისი თარიღი:') from = toDate(val);
+    if (label === 'საბოლოო თარიღი:') to = toDate(val);
+    if (mode === 'საწყისი ნაშთი:') { const m = /^(-?[\d.,]+)\s*([A-Z]{3})$/.exec(val); if (m) { startBal += toNum(m[1]) * rateOf(m[2]); haveBal = true; } }
+  }
+  if (!acct) acct = 'BOG';
+  out.accounts.push({ iban: acct, bank: 'BOG', cur: 'GEL', from, to, startBal: haveBal ? Math.round(startBal * 100) / 100 : null });
+  const h = (txs.rows[0] || []).map(S_);
+  const curCols = h.map((x, i) => /^[A-Z]{3}$/.test(x) ? i : -1).filter(i => i >= 0);
+  const seen = {};
+  for (let i = 1; i < txs.rows.length; i++) {
+    const r = txs.rows[i]; const date = toDate(r[0]); if (!date) continue;
+    const desc = S_(r[1]);
+    const type = desc.split(' - ')[0].trim();
+    const kv = {};
+    desc.split(';').forEach(part => { const j = part.indexOf(':'); if (j > 0) kv[part.slice(0, j).replace(/^.*\s-\s*/, '').trim()] = part.slice(j + 1).trim(); });
+    let merchant = (kv['ობიექტი'] || '').split(',')[0].trim() || kv['მიმღები'] || kv['გადმომრიცხავი'] || '';
+    const mcc = kv['MCC'] || '';
+    let bankCat = mcc ? (MCC[mcc] || 'MCC ' + mcc) : type;
+    if (/სესხის დაფარვა/.test(desc)) { bankCat = 'სესხის დაფარვა'; merchant = merchant || 'სესხის დაფარვა'; }
+    else if (type === 'გადარიცხვა') bankCat = 'პირადი გადარიცხვა';
+    else if (type === 'ჩარიცხვა') bankCat = /ხელფას/.test(kv['დანიშნულება'] || '') ? 'ხელფასი' : 'ჩარიცხვა';
+    else if (type === 'განაღდება') { bankCat = 'განაღდება'; merchant = 'განაღდება (ბანკომატი)'; }
+    else if (/საკომისიო/.test(type)) bankCat = 'ბანკის საკომისიო';
+    if (!merchant) merchant = type || desc.slice(0, 40);
+    const partnerAcct = (IBAN_RE.exec(kv['ანგარიში'] || '') || [])[0] || '';
+    for (const ci of curCols) {
+      const amt = toNum(r[ci]); if (!amt) continue;
+      const cur = h[ci];
+      const base = `BOG:${acct}:${date}:${cur}:${amt}:${hash(desc)}`;
+      seen[base] = (seen[base] || 0) + 1;
+      out.tx.push({ id: base + '#' + seen[base], bank: 'BOG', acct, date, amt, cur, desc, info: '', merchant, bankCat, partnerAcct, op: type === 'კონვერტაცია' ? 'FX' : '', card: (kv['ბარათის No'] || '').replace(/\*/g, '') });
+    }
+  }
+  return out;
+}
+
+/* =================== import =================== */
+async function importFiles(files){
+  const lines = []; let total = 0; const newMonths = []; const fresh = [];
+  for (const f of files) {
+    try {
+      const sheets = await readXlsx(await f.arrayBuffer());
+      let p = parseTBC(sheets);
+      if (!p.accounts.length) p = parseBOG(sheets);
+      if (!p.accounts.length) { lines.push(`✕ ${f.name}: ფორმატი ვერ ვიცანი (საჭიროა TBC-ის ან საქართველოს ბანკის xlsx ამონაწერი)`); continue; }
+      const have = new Set(state.tx.map(t => t.id)); let n = 0, d = 0;
+      for (const t of p.tx) { if (have.has(t.id)) { d++; continue; } state.tx.push(t); have.add(t.id); n++; newMonths.push(ymToIdx(t.date)); }
+      for (const a of p.accounts) {
+        const ex = state.accounts[a.iban] || {};
+        state.accounts[a.iban] = { bank: a.bank, cur: a.cur, label: ex.label || '' };
+        const imp = { file: f.name, bank: a.bank, acct: a.iban, from: a.from, to: a.to, startBal: a.startBal, added: n, dup: d, at: new Date().toISOString() };
+        state.imports.push(imp); fresh.push(imp);
+      }
+      total += n;
+      lines.push(`✓ ${p.bank === 'TBC' ? 'TBC' : 'საქართველოს ბანკი'} ${maskIban(p.accounts[0].iban)}: ${n} ახალი${d ? `, ${d} უკვე იყო` : ''}`);
+    } catch (e) { lines.push(`✕ ${f.name}: ვერ წავიკითხე — ${e.message}`); }
+  }
+  refreshIndex(); save();
+  if (newMonths.length) {
+    const minM = Math.min(...newMonths), maxM = Math.max(...newMonths);
+    ui.month = maxM;
+    const s0 = ymToIdx(state.settings.start);
+    if (s0 != null && minM < s0) {
+      const sb = fresh.filter(x => x.from && ymToIdx(x.from) === minM && x.from.endsWith('-01') && x.startBal != null);
+      const opening = sb.reduce((a, x) => a + x.startBal, 0);
+      const msg = `გეგმა იწყება ${mLong(s0)}-დან, ამონაწერები კი ${mLong(minM)}-დან.\n\nგადავიტანო გეგმის დასაწყისი ${mLong(minM)}-ზე` + (sb.length ? ` და საწყის ნაშთად ჩავწერო ამონაწერების საწყისი ნაშთების ჯამი (${money(opening)})?` : '?');
+      if (confirm(msg)) { state.settings.start = idxToYm(minM); if (sb.length) state.settings.opening = Math.round(opening); save(); }
+    }
+  }
+  const unc = state.tx.filter(t => !effCat(t).cat && effCat(t).src === null).length;
+  openSheet(`<div class="grab"></div><h3>ამონაწერები ჩაიტვირთა</h3>
+    <div class="det" style="font-size:12px;color:var(--text)">${lines.map(esc).join('<br>')}</div>
+    <p class="small t2">დამატებულია ${total} ტრანზაქცია. ${unc ? `კატეგორიის გარეშეა ${unc}; მიანიჭე ერთხელ და შემდეგ თვეებში ავტომატურად ჩაითვლება.` : 'ყველა ტრანზაქციას კატეგორია აქვს.'}</p>
+    <div class="btns">${unc ? '<button class="btn primary block" data-act="go-unc">კატეგორიების მინიჭება</button>' : ''}<button class="btn block" data-act="close">დახურვა</button></div>`);
+  ui.tab = 'tx'; if (unc) ui.txFilter = 'unc';
+  render();
+}
+
+/* =================== rendering =================== */
+const main = document.getElementById('main');
+const titles = { home: 'მიმოხილვა', tx: 'ტრანზაქციები', plan: 'გეგმა', more: 'პარამეტრები' };
+function monthRange(R){
+  let lo = R.s0, hi = R.s0 + R.H - 1;
+  for (const i of R.fm.keys()) { lo = Math.min(lo, i); hi = Math.max(hi, i); }
+  return [lo, hi];
+}
+function render(){
+  refreshIndex();
+  const R = compute();
+  if (ui.month == null) { const ks = [...R.fm.keys()]; ui.month = ks.length ? Math.max(...ks) : Math.max(R.s0, Math.min(nowIdx(), R.s0 + R.H - 1)); }
+  const [lo, hi] = monthRange(R); ui.month = Math.max(lo, Math.min(hi, ui.month));
+  document.getElementById('title').textContent = titles[ui.tab];
+  document.getElementById('msw').style.visibility = (ui.tab === 'home' || ui.tab === 'tx') ? 'visible' : 'hidden';
+  document.getElementById('mlabel').textContent = mLong(ui.month);
+  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === ui.tab);
+  const uncAll = state.tx.filter(t => { const e = effCat(t); return !e.cat && e.src === null; }).length;
+  const badge = document.getElementById('badge'); badge.hidden = !uncAll; badge.textContent = uncAll > 99 ? '99+' : uncAll;
+  const st = main.scrollTop;
+  main.innerHTML = ui.tab === 'home' ? viewHome(R) : ui.tab === 'tx' ? viewTx(R) : ui.tab === 'plan' ? viewPlan(R) : viewMore(R);
+  if (ui.tab === 'home') drawChart(R);
+  main.scrollTop = ui.keepScroll ? st : 0; ui.keepScroll = false;
+}
+
+/* ---------- home ---------- */
+function viewHome(R){
+  const i = ui.month, k = i - R.s0, inPlan = k >= 0 && k < R.H;
+  const f = R.fm.get(i);
+  const pv = id => inPlan && R.byId[id] ? R.byId[id].v[k] : 0;
+  let pInc = inPlan ? R.tot.income[k] : 0, pExp = inPlan ? R.expTot[k] : 0;
+  let fInc = 0, fExp = 0;
+  if (f) {
+    for (const [id, a] of Object.entries(f.byItem)) { const x = IDX.get(id); if (!x) continue; if (x.kind === 'income') fInc += a; else fExp -= a; }
+    fInc += f.unIn; fExp += f.unOut;
+  }
+  let h = '';
+  if (firstRun && !state.tx.length) h += `<div class="card" style="background:var(--accent-soft);border-color:transparent"><h2>მოგესალმები 👋</h2>
+    <p class="small t2" style="margin:0 0 10px">ეს სანიმუშო გეგმაა. ჩაწერე შენი თანხები „გეგმაში“, შემდეგ ჩატვირთე TBC-ის და საქართველოს ბანკის ამონაწერები და ნახავ, როგორ სრულდება გეგმა.</p>
+    <div class="btns"><button class="btn primary block" data-act="import">ამონაწერის ჩატვირთვა</button></div></div>`;
+  // month result
+  h += `<div class="card"><h2>${MNL[i % 12]}: გეგმა და ფაქტი${inPlan ? '' : '<span class="r">გეგმის პერიოდს გარეთ</span>'}</h2>
+    <div class="trio"><span></span><span class="h">გეგმა</span><span class="h">ფაქტი</span>
+      <span class="l">შემოსავალი</span><span class="v">${fmt(pInc)}</span><span class="v">${f ? fmt(fInc) : '—'}</span>
+      <span class="l">ხარჯი</span><span class="v">${fmt(pExp)}</span><span class="v ${f && fExp > pExp ? 'neg' : ''}">${f ? fmt(fExp) : '—'}</span>
+      <span class="sep"></span>
+      <span class="l"><b>დარჩა</b></span><span class="v">${fmt(pInc - pExp)}</span><span class="v ${f ? (fInc - fExp < 0 ? 'neg' : 'pos') : ''}">${f ? fmt(fInc - fExp) : '—'}</span>
+    </div>
+    ${f ? `<p class="small muted" style="margin:10px 0 0">ფაქტი: ${f.n} ტრანზაქცია ამონაწერებიდან${f.internal ? `, მათგან ${f.internal} საკუთარ ანგარიშებს შორის გადარიცხვაა და არ ჩაითვალა` : ''}. ₾-ში.</p>`
+         : `<p class="small muted" style="margin:10px 0 0">ამ თვის ამონაწერი ჯერ არ ჩაგიტვირთავს. <button class="link" data-act="import">ჩატვირთვა</button></p>`}
+  </div>`;
+  // categories
+  if (f || inPlan) {
+    const rows = [];
+    for (const kind of ['fixed', 'variable', 'annual', 'oneoff']) for (const it of state[kind]) {
+      const plan = pv(it.id), fact = f ? -(f.byItem[it.id] || 0) : 0;
+      if (plan > 0.5 || Math.abs(fact) > 0.5) rows.push({ it, plan, fact });
+    }
+    rows.sort((a, b) => (b.fact - b.plan) - (a.fact - a.plan));
+    h += `<div class="card"><h2>ხარჯები კატეგორიებით<span class="r">ფაქტი / გეგმა, ₾</span></h2>`;
+    if (f && f.unOut > 0.5) h += catRow('გეგმის გარეშე (კატეგორია არ აქვს)', f.unOut, 0, true, f.unc);
+    if (!rows.length) h += `<div class="empty">ამ თვეზე ხარჯი არ არის დაგეგმილი.</div>`;
+    for (const r of rows) h += catRow(r.it.name || '(უსახელო)', r.fact, r.plan, false, 0, !f);
+    h += `</div>`;
+    const inc = state.income.map(it => ({ it, plan: pv(it.id), fact: f ? (f.byItem[it.id] || 0) : 0 })).filter(r => r.plan > 0.5 || Math.abs(r.fact) > 0.5);
+    if (inc.length || (f && f.unIn > 0.5)) {
+      h += `<div class="card"><h2>შემოსავლები<span class="r">ფაქტი / გეგმა, ₾</span></h2>`;
+      for (const r of inc) h += incRow(r.it.name || '(უსახელო)', r.fact, r.plan, !f);
+      if (f && f.unIn > 0.5) h += `<div class="cat"><div class="top"><span class="nm">კატეგორიის გარეშე შემოსული</span><span class="amt"><b>${fmt(f.unIn)}</b></span></div></div>`;
+      h += `</div>`;
+    }
+  }
+  // forecast
+  const lastK = R.H - 1; let minK = 0; R.fcFree.forEach((v, j) => { if (v < R.fcFree[minK]) minK = j; });
+  const below = R.fcFree.filter(v => v < R.buffer).length; const nFact = R.isFact.filter(Boolean).length;
+  h += `<div class="card"><h2>ნაშთის პროგნოზი<span class="r">თვის ბოლოს, ₾</span></h2>
+    <div class="kpis">
+      <div class="kpi"><div class="l">ნაშთი ${mShort(R.M[lastK])}-ის ბოლოს</div><div class="v">${fmt(R.fc[lastK])}</div><div class="l">გეგმით: ${fmt(R.bal[lastK])}</div></div>
+      <div class="kpi ${R.fcFree[minK] < 0 ? 'bad' : R.fcFree[minK] < R.buffer ? 'warn' : ''}"><div class="l">უმცირესი თავისუფალი ნაშთი</div><div class="v">${fmt(R.fcFree[minK])}</div><div class="l">${mShort(R.M[minK])}; ბუფერს ქვემოთ ${below} თვე ${R.H}-დან</div></div>
+    </div>
+    <div class="legend"><span><i class="sw" style="background:var(--series-1)"></i>გეგმა</span><span><i class="sw" style="background:var(--series-2)"></i>ფაქტი + პროგნოზი</span><span><i class="sw dash"></i>ბუფერი ${fmt(R.buffer)}</span></div>
+    <div class="chartbox" id="chartbox"><svg id="chart" width="100%" height="200"></svg><div class="tip" id="tip"></div></div>
+    <p class="small muted" style="margin:6px 0 0">${nFact ? `${nFact} დასრულებული თვე ფაქტით ითვლება, დანარჩენი გეგმით.` : 'ჯერ ყველა თვე გეგმით ითვლება: ფაქტი ჩაითვლება დასრულებული თვეებისთვის, რომელთა ამონაწერიც ჩატვირთულია.'} თავისუფალი ნაშთი = ნაშთი − წლიური ხარჯებისა და მიზნებისთვის გადადებული თანხა.</p>
+  </div>`;
+  // months list
+  h += `<div class="card"><h2>თვეების მიხედვით</h2><div class="mrow hd"><span>თვე</span><span class="v">დარჩა</span><span class="v">ნაშთი / თავისუფ.</span></div>`;
+  R.M.forEach((m, j) => {
+    const n = R.isFact[j] ? R.fm.get(m).net : R.net[j];
+    h += `<div class="mrow ${m === ui.month ? 'sel' : ''}" data-act="pick" data-m="${m}"><span>${mShort(m)}${R.isFact[j] ? '<span class="tg f">ფაქტი</span>' : ''}</span>
+      <span class="v ${n < 0 ? 'neg' : ''}">${fmt(n)}</span>
+      <span class="v">${fmt(R.fc[j])}<br><span class="small ${R.fcFree[j] < R.buffer ? 'lowv' : 'muted'}">${fmt(R.fcFree[j])}${R.fcFree[j] < R.buffer ? ' ⚠' : ''}</span></span></div>`;
+  });
+  h += `</div>`;
+  return h;
+}
+function catRow(name, fact, plan, unplanned, uncN, noFact){
+  let bar = '', flag = '';
+  if (unplanned) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">${uncN} ტრანზ.</span>`; }
+  else if (noFact) { bar = ''; }
+  else if (plan <= 0.5) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">დაუგეგმავი</span>`; }
+  else {
+    const p = fact / plan;
+    if (p > 1.0001) { bar = `<i style="width:${100 / p}%"></i><i class="over" style="width:${100 - 100 / p}%;border-radius:0 4px 4px 0"></i>`; flag = `<span class="flag over">+${fmt(fact - plan)} ზედმეტი</span>`; }
+    else bar = `<i style="width:${Math.max(0, p * 100)}%"></i>`;
+  }
+  return `<div class="cat" ${unplanned ? 'data-act="go-unc" style="cursor:pointer"' : ''}><div class="top"><span class="nm">${esc(name)}</span>${flag}
+    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b>`}${unplanned ? '' : (noFact ? '' : ' / ') + fmt(plan)}</span></div><div class="track">${bar}</div>
+    ${unplanned ? '<div class="small" style="margin-top:4px"><span class="link">მიანიჭე კატეგორია →</span></div>' : ''}</div>`;
+}
+function incRow(name, fact, plan, noFact){
+  const p = plan > 0 ? Math.min(1, fact / plan) : 1;
+  return `<div class="cat"><div class="top"><span class="nm">${esc(name)}</span>${!noFact && plan > 0.5 && fact < plan - 0.5 ? `<span class="flag over">−${fmt(plan - fact)}</span>` : ''}
+    <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b> / `}${fmt(plan)}</span></div>${noFact ? '' : `<div class="track"><i style="width:${p * 100}%;background:var(--pos)"></i></div>`}</div>`;
+}
+
+/* ---------- chart ---------- */
+function niceTicks(min, max, n){
+  const span = (max - min) || 1; const s0 = span / n; const mag = Math.pow(10, Math.floor(Math.log10(s0))); const e = s0 / mag;
+  const step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag;
+  const t = []; for (let v = Math.floor(min / step) * step; v <= Math.ceil(max / step) * step + step / 2; v += step) t.push(Math.round(v)); return t;
+}
+const shortN = v => { const a = Math.abs(v), s = v < 0 ? '−' : ''; return a >= 1000 ? s + (a / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 }) + 'k' : s + a; };
+function drawChart(R){
+  const svg = document.getElementById('chart'), box = document.getElementById('chartbox'), tip = document.getElementById('tip');
+  if (!svg) return;
+  const W = Math.max(240, box.clientWidth), Hh = 200, pad = { l: 38, r: 8, t: 8, b: 22 };
+  const ticks = niceTicks(Math.min(...R.bal, ...R.fc, ...R.fcFree, R.buffer, 0), Math.max(...R.bal, ...R.fc, R.buffer), 4);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1], n = R.M.length;
+  const X = k => pad.l + (n === 1 ? (W - pad.l - pad.r) / 2 : k * (W - pad.l - pad.r) / (n - 1));
+  const Y = v => pad.t + (y1 - v) / ((y1 - y0) || 1) * (Hh - pad.t - pad.b);
+  const every = Math.ceil(n / Math.max(1, Math.floor((W - pad.l - pad.r) / 44)));
+  let s = '';
+  for (const t of ticks) s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${Y(t)}" y2="${Y(t)}" stroke="var(${t === 0 ? '--border-strong' : '--border'})"/><text x="${pad.l - 5}" y="${Y(t) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${shortN(t)}</text>`;
+  R.M.forEach((m, k) => { if (k % every === 0) s += `<text x="${X(k)}" y="${Hh - 6}" text-anchor="middle" font-size="10" fill="var(--muted)">${mShort(m)}</text>`; });
+  s += `<line x1="${pad.l}" x2="${W - pad.r}" y1="${Y(R.buffer)}" y2="${Y(R.buffer)}" stroke="var(--ref)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+  const path = a => a.map((v, k) => (k ? 'L' : 'M') + X(k).toFixed(1) + ' ' + Y(v).toFixed(1)).join(' ');
+  s += `<path d="${path(R.bal)}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/>`;
+  s += `<path d="${path(R.fc)}" fill="none" stroke="var(--series-2)" stroke-width="2" stroke-linejoin="round"/>`;
+  R.fcFree.forEach((v, k) => { if (v < R.buffer) s += `<circle cx="${X(k)}" cy="${Y(R.fc[k])}" r="4" fill="var(--critical)" stroke="var(--surface)" stroke-width="2"/>`; });
+  s += `<line id="xh" y1="${pad.t}" y2="${Hh - pad.b}" stroke="var(--border-strong)" visibility="hidden"/>`;
+  s += `<circle id="d1" r="4.5" fill="var(--series-1)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/><circle id="d2" r="4.5" fill="var(--series-2)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>`;
+  s += `<rect id="hit" x="0" y="0" width="${W}" height="${Hh}" fill="transparent"/>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${Hh}`); svg.setAttribute('height', Hh); svg.innerHTML = s;
+  const hit = svg.querySelector('#hit'), xh = svg.querySelector('#xh'), d1 = svg.querySelector('#d1'), d2 = svg.querySelector('#d2');
+  const show = ev => {
+    const rect = svg.getBoundingClientRect(); const mx = (ev.clientX - rect.left) * (W / rect.width);
+    const k = Math.max(0, Math.min(n - 1, Math.round((mx - pad.l) / ((W - pad.l - pad.r) / Math.max(1, n - 1)))));
+    for (const el of [xh, d1, d2]) el.setAttribute('visibility', 'visible');
+    xh.setAttribute('x1', X(k)); xh.setAttribute('x2', X(k));
+    d1.setAttribute('cx', X(k)); d1.setAttribute('cy', Y(R.bal[k])); d2.setAttribute('cx', X(k)); d2.setAttribute('cy', Y(R.fc[k]));
+    tip.innerHTML = `<b>${mLong(R.M[k])}${R.isFact[k] ? ' · ფაქტი' : ''}</b>
+      <div class="row"><span><i class="sw" style="background:var(--series-1)"></i>გეგმა</span><span>${money(R.bal[k])}</span></div>
+      <div class="row"><span><i class="sw" style="background:var(--series-2)"></i>ფაქტი + პროგნოზი</span><span>${money(R.fc[k])}</span></div>
+      <div class="row"><span>თავისუფალი</span><span>${money(R.fcFree[k])}</span></div>
+      ${R.fcFree[k] < R.buffer ? `<div style="color:var(--neg);margin-top:3px">⚠ ბუფერს (${money(R.buffer)}) ქვემოთ</div>` : ''}`;
+    tip.style.display = 'block';
+    const px = X(k) * rect.width / W; const tw = tip.offsetWidth;
+    tip.style.left = Math.max(0, Math.min(box.clientWidth - tw, px - tw / 2)) + 'px'; tip.style.top = '-6px';
+  };
+  hit.addEventListener('pointermove', show); hit.addEventListener('pointerdown', show);
+  hit.addEventListener('pointerleave', () => { tip.style.display = 'none'; for (const el of [xh, d1, d2]) el.setAttribute('visibility', 'hidden'); });
+}
+
+/* ---------- transactions ---------- */
+function catName(id){ if (id === '__internal') return 'შიდა გადარიცხვა'; const x = IDX.get(id); return x ? (x.it.name || '(უსახელო)') : ''; }
+function viewTx(R){
+  const i = ui.month;
+  let list = state.tx.filter(t => ymToIdx(t.date) === i).map(t => ({ t, e: effCat(t) }));
+  const all = list.length;
+  const uncN = list.filter(x => !x.e.cat && x.e.src === null).length, intN = list.filter(x => x.e.cat === '__internal').length;
+  if (ui.txFilter === 'unc') list = list.filter(x => !x.e.cat && x.e.src === null);
+  if (ui.txFilter === 'int') list = list.filter(x => x.e.cat === '__internal');
+  list.sort((a, b) => b.t.date.localeCompare(a.t.date) || Math.abs(b.t.amt) - Math.abs(a.t.amt));
+  let inS = 0, outS = 0; for (const x of state.tx) if (ymToIdx(x.date) === i && effCat(x).cat !== '__internal') { const a = txGel(x); if (a > 0) inS += a; else outS -= a; }
+  let h = `<div class="drop" id="drop"><b>ამონაწერის ჩატვირთვა</b><p>TBC ან საქართველოს ბანკის xlsx ამონაწერი, რამდენიმე ფაილიც ერთად. ფაილი მხოლოდ ამ მოწყობილობაზე მუშავდება.</p>
+    <button class="btn primary" data-act="import">ფაილის არჩევა</button></div>`;
+  h += `<div class="seg"><button data-act="filt" data-v="all" class="${ui.txFilter === 'all' ? 'on' : ''}">ყველა ${all}</button><button data-act="filt" data-v="unc" class="${ui.txFilter === 'unc' ? 'on' : ''}">კატეგ. გარეშე ${uncN}</button><button data-act="filt" data-v="int" class="${ui.txFilter === 'int' ? 'on' : ''}">შიდა ${intN}</button></div>`;
+  if (all) h += `<p class="small t2" style="margin:0 4px 4px">შემოვიდა <b class="pos num">${fmt(inS)} ₾</b> · გავიდა <b class="neg num">${fmt(outS)} ₾</b> <span class="muted">(შიდა გადარიცხვების გარეშე)</span></p>`;
+  if (!list.length) h += `<div class="empty">${all ? 'ამ ფილტრით ტრანზაქცია არ არის.' : `${mLong(i)}-ის ტრანზაქციები არ არის ჩატვირთული.`}</div>`;
+  let day = '';
+  for (const { t, e } of list) {
+    if (t.date !== day) { day = t.date; h += `<div class="day">${fmtDate(day)}</div>`; }
+    const chip = e.cat === '__internal' ? `<span class="chipc int">შიდა გადარიცხვა</span>` : e.cat ? `<span class="chipc">${esc(catName(e.cat))}</span>` : `<span class="chipc none">${e.src === 'manual' || e.src === 'rule' ? 'გეგმის გარეშე' : 'კატეგორია?'}</span>`;
+    const acc = state.accounts[t.acct];
+    h += `<div class="tx ${e.cat === '__internal' ? 'internal' : ''}" data-act="tx" data-id="${esc(t.id)}"><div class="ic ${t.bank}">${t.bank === 'TBC' ? 'TBC' : 'BoG'}</div>
+      <div class="mid"><div class="m">${esc(t.merchant)}</div><div class="s">${esc(t.bankCat || '')}${t.card ? ' · ••' + esc(t.card.slice(-4)) : ''}${acc && acc.label ? ' · ' + esc(acc.label) : ''}</div></div>
+      <div class="rt"><div class="a ${t.amt > 0 ? 'pos' : ''}">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)}${t.cur !== 'GEL' ? ' ' + t.cur : ''}</div>${chip}</div></div>`;
+  }
+  return h;
+}
+function openTx(id){
+  const t = state.tx.find(x => x.id === id); if (!t) return;
+  const e = effCat(t);
+  const srcTxt = e.src === 'manual' ? 'ხელით მინიჭებული' : e.src === 'rule' ? 'წესით' : e.src === 'auto' ? 'ავტომატურად: გადარიცხვა შენს ანგარიშზე / კონვერტაცია' : 'კატეგორია არ აქვს';
+  const btn = (cid, label, extra) => `<button class="cbtn ${extra || ''} ${e.cat === cid || (cid === '__none' && !e.cat && e.src) ? 'cur' : ''}" data-act="setcat" data-id="${esc(t.id)}" data-cat="${cid}">${esc(label)}</button>`;
+  let h = `<div class="grab"></div><h3>${esc(t.merchant)}</h3>
+    <div class="small t2"><b class="num ${t.amt > 0 ? 'pos' : ''}">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)} ${t.cur}</b> · ${fmtDate(t.date)} ${t.date.slice(0, 4)} · ${t.bank === 'TBC' ? 'TBC' : 'საქართველოს ბანკი'} ${maskIban(t.acct)}</div>
+    <div class="det">${esc(t.desc)}${t.bankCat ? `<br><b>ბანკის კატეგორია:</b> ${esc(t.bankCat)}` : ''}</div>
+    <div class="small"><b>ახლა:</b> ${e.cat ? esc(catName(e.cat)) : 'გეგმის გარეშე'} <span class="muted">(${srcTxt})</span></div>
+    <div class="opts">
+      <label><input type="radio" name="scope" value="merchant" checked> ყველა „${esc(t.merchant)}“-ზე — ახლაც და მომავალშიც</label>
+      ${t.bankCat ? `<label><input type="radio" name="scope" value="bankcat"> ბანკის კატეგორიის ყველა ტრანზაქციაზე: „${esc(t.bankCat)}“</label>` : ''}
+      <label><input type="radio" name="scope" value="one"> მხოლოდ ამ ერთ ტრანზაქციაზე</label>
+    </div>`;
+  const groups = t.amt > 0 ? [['income'], ['fixed', 'variable', 'annual', 'oneoff']] : [['fixed', 'variable', 'annual', 'oneoff'], ['income']];
+  for (const g of groups) {
+    const items = g.flatMap(k => state[k]);
+    if (!items.length) continue;
+    h += `<div class="ghead">${g[0] === 'income' ? 'შემოსავლები' : 'ხარჯები'}</div><div class="cgrid">${items.map(it => btn(it.id, it.name || '(უსახელო)')).join('')}</div>`;
+  }
+  h += `<div class="ghead">სხვა</div><div class="cgrid">${btn('__internal', 'შიდა გადარიცხვა (არ ჩაითვალოს)', 'special')}${btn('__none', 'გეგმის გარეშე', 'special')}</div>
+    <p class="small muted">კატეგორია, რომელიც აქ არ არის, ჯერ „გეგმაში“ დაამატე.</p>
+    ${t.cat ? `<button class="btn block" data-act="clearcat" data-id="${esc(t.id)}">ხელით მინიჭების გაუქმება</button>` : ''}`;
+  openSheet(h);
+}
+function setCat(id, cat){
+  const t = state.tx.find(x => x.id === id); if (!t) return;
+  const scope = (document.querySelector('input[name="scope"]:checked') || {}).value || 'one';
+  if (scope === 'one') { t.cat = cat; toast('მიენიჭა: ' + (cat === '__none' ? 'გეგმის გარეშე' : catName(cat))); }
+  else {
+    const value = (scope === 'merchant' ? t.merchant : t.bankCat || '').toLowerCase();
+    state.rules = state.rules.filter(r => !(r.type === scope && r.value === value));
+    state.rules.push({ id: uid(), type: scope, value, itemId: cat });
+    if (t.cat) delete t.cat;
+    const n = state.tx.filter(x => { const e = effCat(x); return e.src === 'rule' && ruleFor(x) && ruleFor(x).value === value; }).length;
+    toast(`წესი შეიქმნა: „${scope === 'merchant' ? t.merchant : t.bankCat}“ → ${cat === '__none' ? 'გეგმის გარეშე' : catName(cat)} (${n} ტრანზაქცია)`);
+  }
+  save(); closeSheet(); ui.keepScroll = true; render();
+}
+
+/* ---------- plan editor ---------- */
+const fName = (l, it, ph) => `<input class="in" data-list="${l}" data-id="${it.id}" data-field="name" value="${esc(it.name)}" placeholder="${ph}">`;
+const fNum = (l, it, f, ph) => `<input class="in n" type="number" inputmode="decimal" step="any" data-list="${l}" data-id="${it.id}" data-field="${f}" data-type="num" value="${it[f] ?? ''}" placeholder="${ph || '0'}">`;
+const fCur = (l, it) => `<select class="in" data-list="${l}" data-id="${it.id}" data-field="cur">${['GEL', 'USD', 'EUR'].map(c => `<option${(it.cur || 'GEL') === c ? ' selected' : ''}>${c}</option>`).join('')}</select>`;
+const fMonth = (l, it, f) => `<input class="in" type="month" data-list="${l}" data-id="${it.id}" data-field="${f}" value="${esc(it[f] || '')}">`;
+const fDel = (l, it) => `<button class="del" data-act="del" data-list="${l}" data-id="${it.id}" aria-label="წაშლა">✕</button>`;
+const fChips = (l, it) => `<span class="chips">${MN.map((m, i) => `<button class="chip${(it.months || []).includes(i + 1) ? ' on' : ''}" data-act="chip" data-list="${l}" data-id="${it.id}" data-m="${i + 1}">${m}</button>`).join('')}</span>`;
+const fPeriod = (l, it) => `<label>დან ${fMonth(l, it, 'start')}</label><label>მდე ${fMonth(l, it, 'end')}</label>`;
+const manualTotal = (it, R) => 'სულ ' + fmt(R.M.reduce((a, i) => a + (+((it.byMonth || {})[idxToYm(i)]) || 0), 0));
+const fMonthGrid = (l, it, R) => `<div class="mgrid">${R.M.map(i => { const ym = idxToYm(i); const v = (it.byMonth || {})[ym];
+  return `<label><span>${mShort(i)}</span><input class="in n" type="number" inputmode="decimal" step="any" data-list="${l}" data-id="${it.id}" data-field="m:${ym}" value="${v ?? ''}" placeholder="0"></label>`; }).join('')}</div>`;
+// income / fixed / variable line: either one standard amount every month, or an amount per month
+function rowFlex(l, it, R, ph, extra){
+  const rep = !!it.repeat;
+  return `<div class="item"><div class="r1">${fName(l, it, ph)}${rep ? fNum(l, it, 'amount') : `<span class="mtot" id="tot-${it.id}">${manualTotal(it, R)}</span>`}${fCur(l, it)}${fDel(l, it)}</div>
+    <div class="r2"><label><input type="checkbox" data-list="${l}" data-id="${it.id}" data-field="repeat" data-type="bool"${rep ? ' checked' : ''}> ყოველთვე ერთი თანხა (სტანდარტი)</label>${rep ? fPeriod(l, it) : ''}${extra || ''}</div>
+    ${rep ? '' : fMonthGrid(l, it, R)}</div>`;
+}
+function goalTxt(x){ return !x ? '' : x.n <= 0 ? 'ვადა გასულია ან გეგმის დასაწყისამდეა.' : x.saved >= x.target ? 'მიზანი უკვე შესრულებულია.' : `საჭიროა <b>${money(x.monthly)}</b> თვეში, ${x.n} თვე (აკლია ${money(x.target - x.saved)}).`; }
+const SECTIONS = [
+  { key: 'income', title: 'შემოსავლები', hint: 'ჩაწერე თანხა თითო თვეზე. თუ ყოველთვე ერთი და იგივეა, მონიშნე „სტანდარტი“ და ერთხელ ჩაწერე. „არასტაბილური“ (მაგ. ბონუსი) კონსერვატიულ სცენარში არ ჩაითვლება.',
+    row: (it, gi, R) => rowFlex('income', it, R, 'მაგ. ხელფასი', `<label><input type="checkbox" data-list="income" data-id="${it.id}" data-field="uncertain" data-type="bool"${it.uncertain ? ' checked' : ''}> არასტაბილური</label>`),
+    add: () => ({ id: uid(), name: '', amount: '', cur: 'GEL', repeat: false, byMonth: {}, start: '', end: '', uncertain: false }) },
+  { key: 'fixed', title: 'ფიქსირებული ხარჯები', hint: 'ჩაწერე თანხა თითო თვეზე, ან მონიშნე „სტანდარტი“ (სესხს „მდე“ თვე მიუთითე).',
+    row: (it, gi, R) => rowFlex('fixed', it, R, 'მაგ. ქირა'),
+    add: () => ({ id: uid(), name: '', amount: '', cur: 'GEL', repeat: false, byMonth: {}, start: '', end: '' }) },
+  { key: 'variable', title: 'ცვლადი ხარჯები (თვიური ბიუჯეტი)', hint: 'ლიმიტი თითო თვეზე (მაგ. დეკემბერში მეტი), ან „სტანდარტი“ ყველა თვისთვის. კონსერვატიულ სცენარში იზრდება მითითებული %-ით.',
+    row: (it, gi, R) => rowFlex('variable', it, R, 'მაგ. საკვები'),
+    add: () => ({ id: uid(), name: '', amount: '', cur: 'GEL', repeat: false, byMonth: {} }) },
+  { key: 'annual', title: 'წლიური ხარჯები', hint: 'ყოველწლიური გადახდები. თანხა ყოველთვიურად „გვერდზე იდება“ და თავისუფალ ნაშთს აკლდება.',
+    row: it => `<div class="item"><div class="r1">${fName('annual', it, 'მაგ. დაზღვევა')}${fNum('annual', it, 'amount')}${fCur('annual', it)}${fDel('annual', it)}</div><div class="r2">${fChips('annual', it)}</div></div>`,
+    add: () => ({ id: uid(), name: '', amount: '', cur: 'GEL', months: [] }) },
+  { key: 'oneoff', title: 'ერთჯერადი დიდი ხარჯები', hint: 'კონკრეტული შენაძენი კონკრეტულ თვეში.',
+    row: it => `<div class="item"><div class="r1">${fName('oneoff', it, 'მაგ. ავეჯი')}${fNum('oneoff', it, 'amount')}${fCur('oneoff', it)}${fDel('oneoff', it)}</div><div class="r2"><label>თვე ${fMonth('oneoff', it, 'month')}</label></div></div>`,
+    add: () => ({ id: uid(), name: '', amount: '', cur: 'GEL', month: '' }) },
+  { key: 'goals', title: 'დანაზოგის მიზნები', hint: '„უკვე დაგროვილი“ თანხა საწყის ნაშთშია ჩათვლილი. შენატანი ნაშთში რჩება, მაგრამ თავისუფალს აკლდება.',
+    row: (it, gi) => `<div class="item"><div class="r1" style="grid-template-columns:minmax(0,1fr) 96px 26px">${fName('goals', it, 'მაგ. მანქანა')}${fNum('goals', it, 'target', 'მიზანი ₾')}${fDel('goals', it)}</div>
+      <div class="r2"><label>დაგროვილი ${fNum('goals', it, 'saved')}</label><label>ვადა ${fMonth('goals', it, 'deadline')}</label>
+      <label><input type="checkbox" data-list="goals" data-id="${it.id}" data-field="spend" data-type="bool"${it.spend ? ' checked' : ''}> ვადაზე დაიხარჯება</label></div>
+      <div class="goalinfo" data-goal="${it.id}">${goalTxt(gi)}</div></div>`,
+    add: () => ({ id: uid(), name: '', target: '', saved: '', deadline: '', spend: false }) }
+];
+function secSum(R, key){
+  const avg = a => a.reduce((x, y) => x + y, 0) / R.H;
+  if (key === 'oneoff') return 'სულ ' + money(R.tot.oneoff.reduce((a, b) => a + b, 0));
+  if (key === 'goals') return money(R.goalInfo.reduce((a, x) => a + (x.n > 0 ? x.monthly : 0), 0)) + '/თვე';
+  return 'საშ. ' + money(avg(R.tot[key])) + '/თვე';
+}
+function viewPlan(R){
+  const avg = a => a.reduce((x, y) => x + y, 0) / R.H;
+  const inc = avg(R.tot.income), exp = avg(R.expTot);
+  let h = `<div class="card"><div class="trio" style="grid-template-columns:1fr auto">
+    <span class="l">საშ. შემოსავალი / თვე</span><span class="v" id="ps-inc">${money(inc)}</span>
+    <span class="l">საშ. ხარჯი / თვე</span><span class="v" id="ps-exp">${money(exp)}</span>
+    <span class="sep"></span><span class="l"><b>დარჩება / თვე</b></span><span class="v" id="ps-net">${money(inc - exp)}</span></div>
+    <p class="small muted" style="margin:8px 0 0">${mLong(R.s0)} – ${mLong(R.s0 + R.H - 1)} · სცენარი: ${state.settings.scenario === 'cons' ? 'კონსერვატიული' : 'ძირითადი'}. პერიოდი და საწყისი ნაშთი — „პარამეტრებში“.</p></div>`;
+  const gi = Object.fromEntries(R.goalInfo.map(x => [x.g.id, x]));
+  for (const sec of SECTIONS) {
+    const items = state[sec.key]; const open = ui.openSec[sec.key] ?? (sec.key === 'variable');
+    h += `<details class="sec" data-sec="${sec.key}"${open ? ' open' : ''}><summary><h2>${sec.title}</h2><span class="sum" id="sum-${sec.key}">${secSum(R, sec.key)}</span></summary><div class="body">
+      <p class="hint">${sec.hint}</p>${items.map(it => sec.row(it, gi[it.id], R)).join('')}
+      <button class="add" data-act="add" data-list="${sec.key}">+ დამატება</button></div></details>`;
+  }
+  return h;
+}
+function updatePlanSums(){
+  const R = compute(); const avg = a => a.reduce((x, y) => x + y, 0) / R.H;
+  for (const sec of SECTIONS) { const el = document.getElementById('sum-' + sec.key); if (el) el.textContent = secSum(R, sec.key); }
+  const inc = avg(R.tot.income), exp = avg(R.expTot);
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = money(v); };
+  set('ps-inc', inc); set('ps-exp', exp); set('ps-net', inc - exp);
+  for (const x of R.goalInfo) { const el = main.querySelector(`[data-goal="${x.g.id}"]`); if (el) el.innerHTML = goalTxt(x); }
+  for (const k of ['income', 'fixed', 'variable']) for (const it of state[k]) { const el = document.getElementById('tot-' + it.id); if (el) el.textContent = manualTotal(it, R); }
+}
+
+/* ---------- settings ---------- */
+function viewMore(R){
+  const S = state.settings;
+  let h = `<div class="card"><h2>გეგმის პარამეტრები</h2><div class="f2">
+    <label class="f">საწყისი თვე<input class="in" type="month" data-list="settings" data-field="start" value="${esc(S.start)}"></label>
+    <label class="f">ჰორიზონტი<select class="in" data-list="settings" data-field="horizon" data-type="num">${[6, 12, 18, 24, 36].map(n => `<option value="${n}"${+S.horizon === n ? ' selected' : ''}>${n} თვე</option>`).join('')}</select></label>
+    <label class="f">საწყისი ნაშთი, ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="opening" data-type="num" value="${S.opening ?? ''}"></label>
+    <label class="f">მინ. ბუფერი, ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="buffer" data-type="num" value="${S.buffer ?? ''}"></label>
+    <label class="f">1 USD = ? ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="usdRate" data-type="num" value="${S.usdRate ?? ''}"></label>
+    <label class="f">1 EUR = ? ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="eurRate" data-type="num" value="${S.eurRate ?? ''}"></label>
+  </div>
+  <p class="small muted" style="margin:8px 0 6px">საწყისი ნაშთი = ყველა ანგარიშზე არსებული თანხა საწყისი თვის დასაწყისში.</p>
+  <div class="small t2" style="margin:10px 0 4px">სცენარი</div>
+  <div class="seg"><button data-act="scen" data-v="base" class="${S.scenario !== 'cons' ? 'on' : ''}">ძირითადი</button><button data-act="scen" data-v="cons" class="${S.scenario === 'cons' ? 'on' : ''}">კონსერვატიული</button></div>
+  <div class="f2"><label class="f">კონს.: ცვლადი ხარჯი +%<input class="in n" type="number" step="any" data-list="settings" data-field="varPct" data-type="num" value="${S.varPct ?? ''}"></label>
+  <label class="f" style="justify-content:flex-end;flex-direction:row;align-items:center;gap:6px"><input type="checkbox" data-list="settings" data-field="dropUncertain" data-type="bool"${S.dropUncertain ? ' checked' : ''}> კონს.: არასტაბილური შემოსავლის გარეშე</label></div>
+  </div>`;
+  // accounts
+  const accs = Object.entries(state.accounts);
+  h += `<div class="card"><h2>ანგარიშები<span class="r">${accs.length}</span></h2>`;
+  if (!accs.length) h += `<div class="empty">ჯერ ამონაწერი არ ჩაგიტვირთავს.</div>`;
+  for (const [iban, a] of accs) {
+    const ts = state.tx.filter(t => t.acct === iban); const ds = ts.map(t => t.date).sort();
+    h += `<div class="list-row"><div class="tx" style="border:0;padding:0;margin:0;background:none;cursor:default"><div class="ic ${a.bank}">${a.bank === 'TBC' ? 'TBC' : 'BoG'}</div></div>
+      <div class="grow"><input class="in" style="padding:4px 6px;font-size:13px" data-acct="${esc(iban)}" value="${esc(a.label || '')}" placeholder="სახელი, მაგ. ხელფასის ბარათი">
+      <div class="small muted">${esc(iban)} · ${ts.length} ტრანზ.${ds.length ? ' · ' + ds[0] + ' – ' + ds[ds.length - 1] : ''}</div></div>
+      <button class="del" data-act="delacct" data-iban="${esc(iban)}" aria-label="ანგარიშის წაშლა">✕</button></div>`;
+  }
+  h += `<p class="small muted" style="margin:8px 0 0">გადარიცხვები ამ ანგარიშებს შორის ავტომატურად „შიდად“ ითვლება და არც ხარჯში, არც შემოსავალში არ შედის.</p></div>`;
+  // rules
+  const rules = state.rules.filter(r => r.itemId === '__internal' || r.itemId === '__none' || IDX.has(r.itemId));
+  h += `<details class="sec"><summary><h2>კატეგორიზაციის წესები</h2><span class="sum">${rules.length}</span></summary><div class="body">
+    <p class="hint">იქმნება ტრანზაქციაზე კატეგორიის მინიჭებისას. წაშლის შემდეგ შესაბამისი ტრანზაქციები ისევ კატეგორიის გარეშე დარჩება.</p>`;
+  for (const r of rules) h += `<div class="list-row"><div class="grow"><div><b>${esc(r.value)}</b></div><div class="small muted">${r.type === 'merchant' ? 'მიმღები/ობიექტი' : 'ბანკის კატეგორია'} → ${esc(r.itemId === '__none' ? 'გეგმის გარეშე' : catName(r.itemId))}</div></div><button class="del" data-act="delrule" data-id="${r.id}" aria-label="წესის წაშლა">✕</button></div>`;
+  if (!rules.length) h += `<div class="empty">წესები ჯერ არ არის.</div>`;
+  h += `</div></details>`;
+  // data
+  h += `<div class="card"><h2>მონაცემები</h2>
+    <p class="small t2" style="margin:0 0 10px">ყველაფერი ინახება მხოლოდ ამ მოწყობილობაზე, ამ ბრაუზერში, და არსად იგზავნება. სხვა მოწყობილობაზე გადასატანად ან დასაცავად გამოიყენე სარეზერვო ფაილი.</p>
+    <div class="btns"><button class="btn block" data-act="export">⬇ სარეზერვო ფაილის ჩამოტვირთვა</button>
+    <button class="btn block" data-act="restore">⬆ სარეზერვო ფაილიდან აღდგენა</button>
+    <button class="btn block" data-act="cleartx">ტრანზაქციების წაშლა (გეგმა დარჩება)</button>
+    <button class="btn block" data-act="sample">სანიმუშო გეგმის ჩატვირთვა</button>
+    <button class="btn block danger" data-act="wipe">ყველაფრის წაშლა</button></div></div>`;
+  return h;
+}
+
+/* =================== sheet / toast =================== */
+const sheetBg = document.getElementById('sheetBg'), sheet = document.getElementById('sheet');
+function openSheet(html){ sheet.innerHTML = html; sheetBg.hidden = false; sheet.scrollTop = 0; }
+function closeSheet(){ sheetBg.hidden = true; sheet.innerHTML = ''; }
+sheetBg.addEventListener('click', e => { if (e.target === sheetBg) closeSheet(); });
+let toastT;
+function toast(msg, ms){ const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', ms || 2800); }
+
+/* =================== events =================== */
+const fileIn = document.getElementById('fileIn'), backupIn = document.getElementById('backupIn');
+fileIn.addEventListener('change', () => { const fs = [...fileIn.files]; fileIn.value = ''; if (fs.length) importFiles(fs); });
+document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (!b) return; ui.tab = b.dataset.tab; render(); });
+document.getElementById('msw').addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const R = compute(); const [lo, hi] = monthRange(R);
+  ui.month = Math.max(lo, Math.min(hi, ui.month + (b.dataset.act === 'mnext' ? 1 : -1))); render();
+});
+function onAct(e){
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act;
+  if (a === 'import') { fileIn.click(); return; }
+  if (a === 'close') { closeSheet(); return; }
+  if (a === 'go-unc') { closeSheet(); ui.tab = 'tx'; ui.txFilter = 'unc'; render(); return; }
+  if (a === 'pick') { ui.month = +b.dataset.m; ui.keepScroll = true; render(); return; }
+  if (a === 'filt') { ui.txFilter = b.dataset.v; ui.keepScroll = true; render(); return; }
+  if (a === 'tx') { openTx(b.dataset.id); return; }
+  if (a === 'setcat') { setCat(b.dataset.id, b.dataset.cat); return; }
+  if (a === 'clearcat') { const t = state.tx.find(x => x.id === b.dataset.id); if (t) delete t.cat; save(); closeSheet(); ui.keepScroll = true; render(); return; }
+  if (a === 'add') { const sec = SECTIONS.find(s => s.key === b.dataset.list); state[sec.key].push(sec.add()); ui.openSec[sec.key] = true; save(); ui.keepScroll = true; render();
+    const inp = main.querySelector(`details[data-sec="${sec.key}"] .item:last-of-type input`); if (inp) inp.focus(); return; }
+  if (a === 'del') { const l = b.dataset.list, it = state[l].find(x => x.id === b.dataset.id); if (!confirm(`${it && it.name ? '„' + it.name + '“' : 'ჩანაწერი'} წაიშალოს?`)) return;
+    state[l] = state[l].filter(x => x.id !== b.dataset.id); save(); ui.keepScroll = true; render(); return; }
+  if (a === 'chip') { e.preventDefault(); const it = state[b.dataset.list].find(x => x.id === b.dataset.id); if (!it) return; const m = +b.dataset.m;
+    it.months = (it.months || []).includes(m) ? it.months.filter(x => x !== m) : [...(it.months || []), m].sort((x, y) => x - y); save(); ui.keepScroll = true; render(); return; }
+  if (a === 'scen') { state.settings.scenario = b.dataset.v; save(); ui.keepScroll = true; render(); return; }
+  if (a === 'delrule') { state.rules = state.rules.filter(r => r.id !== b.dataset.id); save(); ui.keepScroll = true; render(); return; }
+  if (a === 'delacct') { const ib = b.dataset.iban; const n = state.tx.filter(t => t.acct === ib).length;
+    if (!confirm(`წაიშალოს ანგარიში ${ib} და მისი ${n} ტრანზაქცია?`)) return;
+    delete state.accounts[ib]; state.tx = state.tx.filter(t => t.acct !== ib); state.imports = state.imports.filter(x => x.acct !== ib); save(); ui.keepScroll = true; render(); return; }
+  if (a === 'export') { exportBackup(); return; }
+  if (a === 'restore') { backupIn.click(); return; }
+  if (a === 'cleartx') { if (!confirm(`წაიშალოს ყველა ჩატვირთული ტრანზაქცია (${state.tx.length}) და ანგარიში? გეგმა და წესები დარჩება.`)) return;
+    state.tx = []; state.accounts = {}; state.imports = []; save(); render(); return; }
+  if (a === 'sample') { if (!confirm('გეგმა ჩანაცვლდება სანიმუშოთი (ტრანზაქციები დარჩება, მაგრამ მათი კატეგორიები და წესები განახლდება). გავაგრძელო?')) return;
+    const sm = sample(); for (const k of ['income', 'fixed', 'variable', 'annual', 'oneoff', 'goals', 'rules']) state[k] = sm[k]; state.settings = sm.settings; state.tx.forEach(t => delete t.cat); save(); render(); return; }
+  if (a === 'wipe') { if (!confirm('წაიშალოს ყველაფერი: გეგმა, ტრანზაქციები, წესები? ამის დაბრუნება შეუძლებელია, თუ სარეზერვო ფაილი არ გაქვს.')) return;
+    state = blank(); save(); ui.month = null; render(); return; }
+}
+main.addEventListener('click', onAct);
+sheet.addEventListener('click', onAct);
+main.addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.sec) ui.openSec[d.dataset.sec] = d.open; }, true);
+main.addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.acct) { const a = state.accounts[t.dataset.acct]; if (a) { a.label = t.value; save(); } return; }
+  const list = t.dataset.list, field = t.dataset.field; if (!list || !field) return;
+  let v = t.dataset.type === 'bool' ? t.checked : t.value;
+  if (t.dataset.type === 'num') v = t.value === '' ? '' : +t.value;
+  if (list === 'settings') state.settings[field] = v;
+  else {
+    const it = state[list].find(x => x.id === t.dataset.id); if (!it) return;
+    if (field.startsWith('m:')) { it.byMonth = it.byMonth || {}; const ym = field.slice(2); if (v === '') delete it.byMonth[ym]; else it.byMonth[ym] = v; }
+    else if (field === 'repeat') {
+      it.repeat = v; it.byMonth = it.byMonth || {};
+      if (!v && it.amount !== '' && it.amount != null) {   // standard → per month: start from the standard amount in every empty month
+        const R = compute(), a = ymToIdx(it.start), b = ymToIdx(it.end);
+        for (const i of R.M) { const ym = idxToYm(i); if (it.byMonth[ym] === undefined && (a == null || i >= a) && (b == null || i <= b)) it.byMonth[ym] = it.amount; }
+      }
+      if (v && (it.amount === '' || it.amount == null)) { const first = Object.keys(it.byMonth).sort().map(k => it.byMonth[k]).find(x => x !== '' && x != null); if (first != null) it.amount = first; }
+    }
+    else it[field] = v;
+  }
+  save();
+  if (field === 'repeat' || (list === 'settings' && t.type === 'checkbox')) { ui.keepScroll = true; render(); return; }
+  if (ui.tab === 'plan') updatePlanSums();
+});
+main.addEventListener('change', e => { if (e.target.dataset.list === 'settings' && ['start', 'horizon'].includes(e.target.dataset.field)) { ui.month = null; } });
+// drag & drop of statement files onto the phone
+const phone = document.getElementById('phone');
+phone.addEventListener('dragover', e => { e.preventDefault(); const d = document.getElementById('drop'); if (d) d.classList.add('hover'); });
+phone.addEventListener('dragleave', e => { if (e.target === phone) { const d = document.getElementById('drop'); if (d) d.classList.remove('hover'); } });
+phone.addEventListener('drop', e => { e.preventDefault(); const fs = [...(e.dataTransfer.files || [])].filter(f => /\.xlsx$/i.test(f.name)); if (fs.length) importFiles(fs); else toast('ჩააგდე .xlsx ამონაწერი'); });
+
+function exportBackup(){
+  const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+  const a = document.createElement('a'); const d = new Date();
+  a.href = URL.createObjectURL(blob); a.download = `fulis-gegma-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+}
+backupIn.addEventListener('change', () => {
+  const f = backupIn.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    backupIn.value = '';
+    try { const st = normalize(JSON.parse(rd.result)); if (!st) throw 0;
+      if (!confirm('მიმდინარე მონაცემები ჩანაცვლდება სარეზერვო ფაილიდან. გავაგრძელო?')) return;
+      state = st; save(); ui.month = null; render(); toast('აღდგენილია');
+    } catch (err) { alert('ეს სარეზერვო ფაილი არ არის.'); }
+  };
+  rd.readAsText(f);
+});
+let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (ui.tab === 'home') drawChart(compute()); }, 150); });
+
+render();
+
+// offline support when served from a website (not when opened as a local file)
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+})();
+</script>
+</body>
+</html>
