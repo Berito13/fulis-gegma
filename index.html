@@ -108,6 +108,7 @@ nav.tabs .badge{position:absolute;top:8px;left:calc(50% + 6px);background:var(--
 .cat .top{display:flex;align-items:flex-start;gap:10px}
 .cat .nm{flex:1;min-width:0;overflow-wrap:anywhere}
 .cat .meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin-top:6px;font-size:12px}
+.pace{margin-top:10px;padding:9px 10px;border-radius:10px;background:var(--accent-soft);font-size:13px;display:flex;flex-direction:column;gap:4px}
 .cat.click{cursor:pointer}
 .cat.click:active{opacity:.7}
 .cat .chev{color:var(--muted);margin-left:6px;font-size:16px;line-height:1}
@@ -758,6 +759,8 @@ function viewHome(R){
     for (const [id, a] of Object.entries(f.byItem)) { const x = IDX.get(id); if (!x) continue; if (x.kind === 'income') fInc += a; else fExp -= a; }
     fInc += f.unIn; fExp += f.unOut;
   }
+  // month in progress: up to which day the statements reach, how many days are left
+  const mp = monthProgress(i);
   let h = '';
   if (firstRun && !state.tx.length) h += `<div class="card" style="background:var(--accent-soft);border-color:transparent"><h2>მოგესალმები 👋</h2>
     <p class="small t2" style="margin:0 0 10px">ეს სანიმუშო გეგმაა. ჩაწერე შენი თანხები „გეგმაში“, შემდეგ ჩატვირთე TBC-ის და საქართველოს ბანკის ამონაწერები და ნახავ, როგორ სრულდება გეგმა.</p>
@@ -772,19 +775,25 @@ function viewHome(R){
     </div>
     ${f ? `<p class="small muted" style="margin:10px 0 0">ფაქტი: ${f.n} ტრანზაქცია ამონაწერებიდან${f.internal ? `, მათგან ${f.internal} საკუთარ ანგარიშებს შორის გადარიცხვაა და არ ჩაითვალა` : ''}. ₾-ში.</p>`
          : `<p class="small muted" style="margin:10px 0 0">ამ თვის ამონაწერი ჯერ არ ჩაგიტვირთავს. <button class="link" data-act="import">ჩატვირთვა</button></p>`}
+    ${f && mp.partial ? paceBox(R, k, inPlan, f, mp) : ''}
   </div>`;
   // categories
   if (f || inPlan) {
     const rows = [];
     for (const kind of ['fixed', 'variable', 'annual', 'oneoff']) for (const it of state[kind]) {
       const plan = pv(it.id), fact = f ? -(f.byItem[it.id] || 0) : 0;
-      if (plan > 0.5 || Math.abs(fact) > 0.5) rows.push({ it, plan, fact });
+      if (plan > 0.5 || Math.abs(fact) > 0.5) rows.push({ it, plan, fact, kind });
     }
     rows.sort((a, b) => (b.fact - b.plan) - (a.fact - a.plan));
     h += `<div class="card"><h2>ხარჯები კატეგორიებით<span class="r">ფაქტი / გეგმა, ₾</span></h2>`;
     if (f && f.unOut > 0.5) h += catRow('გეგმის გარეშე (კატეგორია არ აქვს)', f.unOut, 0, true, f.unc);
     if (!rows.length) h += `<div class="empty">ამ თვეზე ხარჯი არ არის დაგეგმილი.</div>`;
-    for (const r of rows) h += catRow(r.it.name || '(უსახელო)', r.fact, r.plan, false, 0, !f, r.it.id);
+    for (const r of rows) {
+      // in an unfinished month: what is left, per-day allowance (variable budgets), and whether spending runs ahead of the calendar
+      const pace = f && mp.partial && r.plan > 0.5 ? { left: r.plan - r.fact, perDay: r.kind === 'variable' && mp.daysLeft > 0 ? (r.plan - r.fact) / mp.daysLeft : null,
+        fast: r.kind === 'variable' && r.fact <= r.plan && r.fact > r.plan * mp.day / mp.dim + 0.5, days: mp.daysLeft } : null;
+      h += catRow(r.it.name || '(უსახელო)', r.fact, r.plan, false, 0, !f, r.it.id, pace);
+    }
     h += `</div>`;
     const inc = state.income.map(it => ({ it, plan: pv(it.id), fact: f ? (f.byItem[it.id] || 0) : 0 })).filter(r => r.plan > 0.5 || Math.abs(r.fact) > 0.5);
     if (inc.length || (f && f.unIn > 0.5)) {
@@ -817,7 +826,28 @@ function viewHome(R){
   h += `</div>`;
   return h;
 }
-function catRow(name, fact, plan, unplanned, uncN, noFact, id){
+// statements' reach inside month i: the earliest "to" date among accounts that cover this month (else the last transaction day)
+function monthProgress(i){
+  const y = Math.floor(i / 12), m = i % 12, dim = new Date(y, m + 1, 0).getDate();
+  const first = idxToYm(i) + '-01', last = idxToYm(i) + '-' + String(dim).padStart(2, '0');
+  const ends = {};
+  for (const imp of state.imports) { if (!imp.to || !imp.from || imp.from > last || imp.to < first) continue; ends[imp.acct] = ends[imp.acct] && ends[imp.acct] > imp.to ? ends[imp.acct] : imp.to; }
+  let asOf = Object.values(ends).sort()[0] || null;
+  if (!asOf) { const ds = state.tx.filter(t => ymToIdx(t.date) === i).map(t => t.date).sort(); asOf = ds[ds.length - 1] || null; }
+  if (asOf && asOf > last) asOf = last;
+  const day = asOf ? +asOf.slice(8, 10) : 0;
+  return { asOf, day, dim, daysLeft: dim - day, partial: !!asOf && day < dim };
+}
+// summary for an unfinished month: data date, days left, money left for variable budgets and per-day amount
+function paceBox(R, k, inPlan, f, mp){
+  let vp = 0, vf = 0;
+  for (const it of state.variable) { vp += inPlan && R.byId[it.id] ? R.byId[it.id].v[k] : 0; vf += -(f.byItem[it.id] || 0); }
+  const left = vp - vf, expected = vp * mp.day / mp.dim;
+  return `<div class="pace"><div>📅 ამონაწერი <b>${fmtDate(mp.asOf)}</b>-მდე · თვის ბოლომდე <b>${mp.daysLeft} დღე</b></div>
+    <div>ცვლადი ხარჯები: დახარჯე <b>${fmt(vf)}</b> / ${fmt(vp)} ₾ → ${left >= 0 ? `დარჩა <b class="pos">${fmt(left)} ₾</b>, დღეში ≈ <b>${fmt(left / Math.max(1, mp.daysLeft))} ₾</b>` : `<b class="neg">გადაჭარბება ${fmt(-left)} ₾</b>`}</div>
+    ${vp > 0 && vf > expected + 0.5 && left >= 0 ? `<div class="small" style="color:var(--neg)">⚠ ტემპი მაღალია: ${mp.day} დღეში ნორმით ${fmt(expected)} ₾ უნდა დახარჯულიყო.</div>` : ''}</div>`;
+}
+function catRow(name, fact, plan, unplanned, uncN, noFact, id, pace){
   let bar = '', flag = '';
   if (unplanned) { bar = `<i class="unpl" style="width:100%"></i>`; flag = `<span class="flag unpl">${uncN} ტრანზ.</span>`; }
   else if (noFact) { bar = ''; }
@@ -827,7 +857,9 @@ function catRow(name, fact, plan, unplanned, uncN, noFact, id){
     if (p > 1.0001) { bar = `<i style="width:${100 / p}%"></i><i class="over" style="width:${100 - 100 / p}%;border-radius:0 4px 4px 0"></i>`; flag = `<span class="flag over">+${fmt(fact - plan)} ზედმეტი</span>`; }
     else bar = `<i style="width:${Math.max(0, p * 100)}%"></i>`;
   }
-  const meta = flag || unplanned ? `<div class="meta">${flag}${unplanned ? '<span class="link">მიანიჭე კატეგორია →</span>' : ''}</div>` : '';
+  let paceTxt = '';
+  if (pace && pace.left > 0.5) paceTxt = `<span class="muted">დარჩა ${fmt(pace.left)} ₾${pace.perDay != null ? ` · დღეში ≈ ${fmt(pace.perDay)} ₾` : ''}</span>${pace.fast ? '<span class="flag unpl">სწრაფად იხარჯება</span>' : ''}`;
+  const meta = flag || unplanned || paceTxt ? `<div class="meta">${flag}${paceTxt}${unplanned ? '<span class="link">მიანიჭე კატეგორია →</span>' : ''}</div>` : '';
   const click = id && !noFact && Math.abs(fact) > 0.5;   // tap → where the money went (by store)
   return `<div class="cat ${click || unplanned ? 'click' : ''}" ${unplanned ? 'data-act="go-unc"' : click ? `data-act="cat" data-id="${id}"` : ''}><div class="top"><span class="nm">${esc(name)}</span>
     <span class="amt">${noFact ? '— / ' : `<b>${fmt(fact)}</b>`}${unplanned ? '' : (noFact ? '' : ' / ') + fmt(plan)}${click ? '<span class="chev">›</span>' : ''}</span></div><div class="track">${bar}</div>${meta}</div>`;
