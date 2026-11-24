@@ -120,6 +120,16 @@ details.mer[open] > summary .nm{font-weight:600}
 .mtx{margin-top:8px;background:var(--surface-2);border-radius:10px;padding:2px 10px}
 .mtr{display:flex;justify-content:space-between;gap:10px;padding:7px 0;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)}
 .mtr:last-child{border-bottom:0}
+/* folded plan lines: "name · amount ›", tap to open */
+.ihead{display:flex;width:100%;align-items:center;gap:8px;border:0;background:transparent;padding:4px 2px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.ihead:active{opacity:.7}
+.iname{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.isum{font-size:13px;color:var(--text-2);text-align:right;max-width:55%;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.isum-np{color:var(--text);background:var(--warn-bg);border-radius:6px;padding:1px 6px;font-weight:600;white-space:nowrap}
+.ichev{color:var(--muted);font-size:18px;line-height:1;transition:transform .15s;flex:none}
+.item.open .ichev{transform:rotate(90deg)}
+.item:not(.open) .ibody{display:none}
+.item.open .ibody{margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
 /* plan lines without an amount */
 .npb{display:none;font-size:12px;font-weight:600;color:var(--text);background:var(--warn-bg);border-radius:8px;padding:4px 8px;margin-bottom:7px}
 .item.noplan{border-color:var(--warning)}
@@ -424,7 +434,7 @@ function save(){
 if (firstRun) save();
 if (loadFailed) setTimeout(() => toast('⚠ შენახული მონაცემები ვერ წავიკითხე — ასლი შენახულია. აღადგინე სარეზერვო ფაილიდან (პარამეტრები).', 8000), 500);
 
-const ui = { tab: 'home', month: null, txFilter: 'all', openSec: {} };
+const ui = { tab: 'home', month: null, txFilter: 'all', openSec: {}, openItems: new Set() };
 
 // theme: 'auto' follows the phone, 'light' / 'dark' are fixed (CSS reads <html data-theme>)
 function applyTheme(){
@@ -1606,19 +1616,46 @@ function viewPlan(R){
     const items = state[sec.key]; const open = ui.openSec[sec.key] ?? (sec.key === 'variable');
     const npN = CAT_KINDS.includes(sec.key) ? items.filter(it => !hasPlan(it, sec.key, R)).length : 0;
     // every line gets an anchor id; lines without an amount get the yellow "no plan" mark (shown/hidden live by class)
-    const row = it => sec.row(it, gi[it.id], R).replace('<div class="item">',
-      `<div class="item${CAT_KINDS.includes(sec.key) && !hasPlan(it, sec.key, R) ? ' noplan' : ''}" id="item-${it.id}"><div class="npb">⚠ გეგმა არ არის — ჩაწერე თანხა</div>`);
+    // each line is folded to "name · amount ›"; tap opens the full form (state kept in ui.openItems)
+    const row = it => {
+      let html = sec.row(it, gi[it.id], R).trim();
+      html = html.slice(0, html.lastIndexOf('</div>'));                   // drop the item's closing tag, re-added after the body
+      const np = CAT_KINDS.includes(sec.key) && !hasPlan(it, sec.key, R), open = ui.openItems.has(it.id);
+      return html.replace('<div class="item">',
+        `<div class="item${np ? ' noplan' : ''}${open ? ' open' : ''}" id="item-${it.id}">
+          <button class="ihead" data-act="toggle-item" data-id="${it.id}" aria-expanded="${open}"><span class="iname">${esc(it.name || 'ახალი სტრიქონი')}</span><span class="isum">${itemSummary(it, sec.key, R)}</span><span class="ichev">›</span></button>
+          <div class="ibody"><div class="npb">⚠ გეგმა არ არის — ჩაწერე თანხა</div>`) + '</div></div>';
+    };
     h += `<details class="sec" data-sec="${sec.key}"${open ? ' open' : ''}><summary><h2>${sec.title}</h2><span class="sum" id="sum-${sec.key}">${secSum(R, sec.key)}</span><span class="flag unpl np-count" id="npc-${sec.key}"${npN ? '' : ' hidden'}>⚠ ${npN}</span></summary><div class="body">
       <p class="hint">${sec.hint}</p>${items.map(row).join('')}
       <button class="add" data-act="add" data-list="${sec.key}">+ დამატება</button></div></details>`;
   }
   return h;
 }
+// short text on a folded line: the amount (per month / total / when)
+const curSign = c => !c || c === 'GEL' ? '₾' : c;
+function itemSummary(it, k, R){
+  if (CAT_KINDS.includes(k) && !hasPlan(it, k, R)) return '<span class="isum-np">⚠ გეგმა არ არის</span>';
+  if (k === 'goals') return `${fmt(+it.target || 0)} ₾${ymToIdx(it.deadline) != null ? ' · ' + mShort(ymToIdx(it.deadline)) : ''}`;
+  if (k === 'annual') return `${fmt(+it.amount || 0)} ${curSign(it.cur)} · ${(it.months || []).map(m => MN[m - 1]).join(', ')}`;
+  if (k === 'oneoff') return `${fmt(+it.amount || 0)} ${curSign(it.cur)}${ymToIdx(it.month) != null ? ' · ' + mShort(ymToIdx(it.month)) : ''}`;
+  if (it.repeat) return `${fmt(+it.amount || 0)} ${curSign(it.cur)}/თვე${ymToIdx(it.end) != null ? ' · ' + mShort(ymToIdx(it.end)) + '-მდე' : ''}`;
+  const n = R.M.filter(i => +((it.byMonth || {})[idxToYm(i)]) > 0).length;
+  return `${manualTotal(it, R)} ${curSign(it.cur)} · ${n} თვე`;
+}
+function refreshItemHeads(R){
+  for (const sec of SECTIONS) for (const it of state[sec.key]) {
+    const el = document.getElementById('item-' + it.id); if (!el) continue;
+    const nm = el.querySelector('.iname'), sm = el.querySelector('.isum');
+    if (nm) nm.textContent = it.name || 'ახალი სტრიქონი';
+    if (sm) sm.innerHTML = itemSummary(it, sec.key, R);
+  }
+}
 // open the plan at one line and put the cursor into its amount
 function gotoItem(id){
   closeSheet(); refreshIndex();
   const x = IDX.get(id); if (!x) return;
-  ui.tab = 'plan'; ui.openSec[x.kind] = true; render();
+  ui.tab = 'plan'; ui.openSec[x.kind] = true; ui.openItems.add(id); render();
   const el = document.getElementById('item-' + id); if (!el) return;
   main.scrollTo({ top: el.getBoundingClientRect().top - main.getBoundingClientRect().top + main.scrollTop - 12, behavior: 'instant' });
   el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
@@ -1640,6 +1677,7 @@ function updatePlanSums(){
   for (const x of R.goalInfo) { const el = main.querySelector(`[data-goal="${x.g.id}"]`); if (el) el.innerHTML = goalTxt(x); }
   for (const k of ['income', 'fixed', 'variable']) for (const it of state[k]) { const el = document.getElementById('tot-' + it.id); if (el) el.textContent = manualTotal(it, R); }
   updateNoPlanMarks(R);
+  refreshItemHeads(R);
 }
 
 /* ---------- settings ---------- */
@@ -1751,8 +1789,15 @@ function onAct(e){
   }
   if (a === 'goto-item') { e.stopPropagation(); gotoItem(b.dataset.id); return; }
   if (a === 'clearcat') { const t = state.tx.find(x => x.id === b.dataset.id); if (t) delete t.cat; save(); closeSheet(); ui.keepScroll = true; render(); return; }
-  if (a === 'add') { const sec = SECTIONS.find(s => s.key === b.dataset.list); state[sec.key].push(sec.add()); ui.openSec[sec.key] = true; save(); ui.keepScroll = true; render();
-    const inp = main.querySelector(`details[data-sec="${sec.key}"] .item:last-of-type input`); if (inp) inp.focus(); return; }
+  if (a === 'add') { const sec = SECTIONS.find(s => s.key === b.dataset.list); const nw = sec.add(); state[sec.key].push(nw); ui.openSec[sec.key] = true; ui.openItems.add(nw.id); save(); ui.keepScroll = true; render();
+    const inp = main.querySelector(`#item-${nw.id} textarea, #item-${nw.id} input`); if (inp) inp.focus(); return; }
+  if (a === 'toggle-item') {
+    const el = document.getElementById('item-' + b.dataset.id); if (!el) return;
+    const open = !el.classList.contains('open'); el.classList.toggle('open', open); b.setAttribute('aria-expanded', open);
+    open ? ui.openItems.add(b.dataset.id) : ui.openItems.delete(b.dataset.id);
+    if (open) autosizeIn(el);
+    return;
+  }
   if (a === 'del') { const l = b.dataset.list, it = state[l].find(x => x.id === b.dataset.id); if (!confirm(`${it && it.name ? '„' + it.name + '“' : 'ჩანაწერი'} წაიშალოს?`)) return;
     state[l] = state[l].filter(x => x.id !== b.dataset.id); save(); ui.keepScroll = true; render(); return; }
   if (a === 'chip') { e.preventDefault(); const it = state[b.dataset.list].find(x => x.id === b.dataset.id); if (!it) return; const m = +b.dataset.m;
