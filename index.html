@@ -184,7 +184,7 @@ label.cat.mrg input{margin-top:3px;width:18px;height:18px;flex:none}
 .tx{display:flex;gap:10px;align-items:center;padding:9px 10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:6px;cursor:pointer}
 .tx:hover{border-color:var(--border-strong)}
 .tx .ic{width:34px;height:34px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
-.tx .ic.TBC{background:#00a3e0} .tx .ic.BOG{background:#ff6b00}
+.tx .ic.TBC{background:#00a3e0} .tx .ic.BOG{background:#ff6b00} .tx .ic.OTHER{background:#6b7280;font-size:10px}
 .tx .mid{flex:1;min-width:0}
 .tx .m{font-weight:600;overflow-wrap:anywhere}
 .tx .s{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
@@ -290,7 +290,7 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--te
   </nav>
   <div class="sheet-bg" id="sheetBg" hidden><div class="sheet" id="sheet"></div></div>
   <div class="toast" id="toast"></div>
-  <input type="file" id="fileIn" accept=".xlsx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
+  <input type="file" id="fileIn" accept=".xlsx,.pdf,.csv,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
   <input type="file" id="backupIn" accept=".json,application/json" hidden>
 </div>
 <p class="desk-note">დესკტოპის რეჟიმი: აპლიკაცია ზუსტად ისე ჩანს, როგორც ტელეფონზე გამოჩნდება.</p>
@@ -312,11 +312,20 @@ const nowIdx = () => { const d = new Date(); return d.getFullYear() * 12 + d.get
 const fmt = n => { const r = Math.round(n); return (r < 0 ? '−' : '') + Math.abs(r).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' '); };
 const fmt2 = n => { const a = Math.abs(n); const s = a.toFixed(2).replace(/\B(?=(\d{3})+(?!\d)\.)/g, ' '); return (n < 0 ? '−' : '') + s; };
 const money = n => fmt(n) + ' ₾';
-const toNum = v => { if (v == null || v === '') return null; if (typeof v === 'number') return v; const s = String(v).replace(/[\s,]/g, ''); const n = parseFloat(s); return isNaN(n) ? null : n; };
+// numbers as banks write them: "1,234.56", "1 234,56" (comma decimals), "−72.22", "21.66 GEL"
+const toNum = v => {
+  if (v == null || v === '') return null; if (typeof v === 'number') return v;
+  let s = String(v).replace(/[\s ']/g, '').replace(/−/g, '-').replace(/[^\d,.\-+]/g, '');
+  if (/,\d{1,2}$/.test(s) && !/\.\d+$/.test(s)) s = s.replace(/\./g, '').replace(',', '.'); else s = s.replace(/,/g, '');
+  const n = parseFloat(s); return isNaN(n) ? null : n;
+};
 const hash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36); };
 const fmtDate = d => { const [y, m, dd] = d.split('-'); return (+dd) + ' ' + MN[+m - 1]; };
 const IBAN_RE = /GE\d{2}[A-Z]{2}\d{16}/;
 const maskIban = s => s && s.length > 8 ? s.slice(0, 4) + '…' + s.slice(-4) : s;
+// bank name for a transaction / account (TBC, BoG, or the bank read from the IBAN for other banks)
+const bankLabel = x => x.bank === 'TBC' ? 'TBC' : x.bank === 'BOG' ? 'საქართველოს ბანკი' : (x.bankName || 'სხვა ბანკი');
+const bankShort = x => x.bank === 'TBC' ? 'TBC' : x.bank === 'BOG' ? 'BoG' : esc((x.bankName || '?').slice(0, 3));
 
 /* =================== state =================== */
 function sample(){
@@ -326,7 +335,7 @@ function sample(){
   const R = (value, itemId) => ({ id: uid(), type: 'bankcat', value: value.toLowerCase(), itemId });
   return {
     version: 2,
-    settings: { start: idxToYm(s), horizon: 12, opening: 5000, buffer: 1500, usdRate: 2.7, eurRate: 3.1, scenario: 'base', varPct: 10, dropUncertain: true, theme: 'auto' },
+    settings: { start: idxToYm(s), horizon: 12, opening: 5000, buffer: 1500, usdRate: 2.7, eurRate: 3.1, scenario: 'base', varPct: 10, dropUncertain: true, theme: 'auto', gbpRate: 3.5 },
     income: [
       { id: sal, name: 'ხელფასი', amount: 4500, cur: 'GEL', repeat: true, byMonth: {}, start: '', end: '', uncertain: false }
     ],
@@ -428,7 +437,7 @@ applyTheme();
 if (window.matchMedia) { const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', applyTheme) : mq.addListener(applyTheme)); }
 
 /* =================== plan model =================== */
-const rateOf = cur => cur === 'USD' ? (+state.settings.usdRate || 0) : cur === 'EUR' ? (+state.settings.eurRate || 0) : 1;
+const rateOf = cur => cur === 'USD' ? (+state.settings.usdRate || 0) : cur === 'EUR' ? (+state.settings.eurRate || 0) : cur === 'GBP' ? (+state.settings.gbpRate || 0) : 1;
 const gel = (a, c) => (+a || 0) * rateOf(c);
 function compute(){
   const S = state.settings;
@@ -684,7 +693,7 @@ async function readXlsx(buf){
 function toDate(v){
   if (v == null || v === '') return null;
   if (typeof v === 'number') return new Date(Math.round((v - 25569) * 86400000)).toISOString().slice(0, 10);
-  const s = String(v).trim(); let m = /^(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/.exec(s);
+  const s = String(v).trim(); let m = /^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})/.exec(s);
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? m[0] : null;
 }
@@ -746,26 +755,30 @@ function buildTBC(o){
 const MCC = {'5411':'სუპერმარკეტები','5412':'სუპერმარკეტები','5422':'საკვების მაღაზიები','5441':'საკვების მაღაზიები','5451':'საკვების მაღაზიები','5462':'საკვების მაღაზიები','5499':'საკვების მაღაზიები','5812':'რესტორნები','5813':'ბარები','5814':'კაფე / სწრაფი კვება','5541':'საწვავი','5542':'საწვავი','5983':'საწვავი','4121':'ტაქსი','4111':'ტრანსპორტი','4131':'ტრანსპორტი','7523':'პარკინგი','5912':'აფთიაქი','8011':'სამედიცინო','8021':'სამედიცინო','8062':'სამედიცინო','8071':'სამედიცინო','8099':'სამედიცინო','5651':'ტანსაცმელი','5661':'ტანსაცმელი','5691':'ტანსაცმელი','5699':'ტანსაცმელი','5311':'უნივერმაღები','5310':'უნივერმაღები','5331':'უნივერმაღები','5399':'უნივერმაღები','4814':'კავშირგაბმულობა','4899':'გამოწერები','4900':'კომუნალური','5732':'ელექტრონიკა','5045':'ელექტრონიკა','5200':'სახლი და რემონტი','5251':'სახლი და რემონტი','5712':'სახლი და რემონტი','5719':'სახლი და რემონტი','7230':'სილამაზე','5977':'სილამაზე','7997':'სპორტი','5941':'სპორტი','7832':'გართობა','7922':'გართობა','7996':'გართობა','5942':'წიგნები','5943':'წიგნები','8220':'განათლება','8299':'განათლება','4511':'მოგზაურობა','7011':'მოგზაურობა','4722':'მოგზაურობა','5921':'ალკოჰოლი და თამბაქო','5993':'ალკოჰოლი და თამბაქო','6011':'განაღდება','6010':'განაღდება','5815':'ციფრული სერვისები','5816':'ციფრული სერვისები','5817':'ციფრული სერვისები','5818':'ციფრული სერვისები','5995':'ცხოველები','0742':'ცხოველები','5641':'ბავშვები','5945':'ბავშვები','4829':'გადარიცხვები','6012':'ფინანსური მომსახურება','6051':'ფინანსური მომსახურება','9399':'სახელმწიფო მომსახურება','9311':'გადასახადები','4215':'კურიერი / ფოსტა','5039':'სახლი და რემონტი','5192':'წიგნები','5992':'ყვავილები','6538':'გადარიცხვები','5511':'მანქანა','5532':'მანქანა','5533':'მანქანა','5599':'მანქანა','7538':'მანქანა','7542':'მანქანა','5734':'ციფრული სერვისები','5735':'ციფრული სერვისები','7372':'ციფრული სერვისები','4816':'ციფრული სერვისები','5968':'გამოწერები'};
 function parseBOG(sheets){
   const out = { bank: 'BOG', accounts: [], tx: [] };
-  const det = sheets.find(s => s.rows.some(r => S_(r[0]) === 'ანგარიშის ნომერი:'));
-  const txs = sheets.find(s => { const h = (s.rows[0] || []).map(S_); return h[0] === 'თარიღი' && h.includes('დანიშნულება'); });
+  // Georgian or English export
+  const L_ACCT = /^(ანგარიშის ნომერი|account (number|no\.?)|iban):?$/i, L_FROM = /^(საწყისი თარიღი|start date|date from|from):?$/i,
+        L_TO = /^(საბოლოო თარიღი|end date|date to|to):?$/i, L_OPEN = /^(საწყისი ნაშთი|opening balance|starting balance):?$/i;
+  const det = sheets.find(s => s.rows.some(r => L_ACCT.test(S_(r[0]))));
+  const txs = sheets.find(s => { const h = (s.rows[0] || []).map(S_); return /^(თარიღი|date)$/i.test(h[0]) && h.some(x => /^(დანიშნულება|description|details)$/i.test(x)) && h.some(x => /^[A-Z]{3}$/.test(x)); });
   if (!txs) return out;
   let acct = '', from = null, to = null, startBal = 0, haveBal = false, mode = '';
   if (det) for (const r of det.rows) {
     const label = S_(r[0]); const val = S_(r.slice(1).find(v => v != null && S_(v) !== ''));
     if (label) mode = label;
-    if (label === 'ანგარიშის ნომერი:') acct = (IBAN_RE.exec(val) || [val])[0];
-    if (label === 'საწყისი თარიღი:') from = toDate(val);
-    if (label === 'საბოლოო თარიღი:') to = toDate(val);
-    if (mode === 'საწყისი ნაშთი:') { const m = /^(-?[\d.,]+)\s*([A-Z]{3})$/.exec(val); if (m) { startBal += toNum(m[1]) * rateOf(m[2]); haveBal = true; } }
+    if (L_ACCT.test(label)) acct = (IBAN_RE.exec(val) || [val])[0];
+    if (L_FROM.test(label)) from = toDate(val);
+    if (L_TO.test(label)) to = toDate(val);
+    if (L_OPEN.test(mode)) { const m = /^(-?[\d.,]+)\s*([A-Z]{3})$/.exec(val); if (m) { startBal += toNum(m[1]) * rateOf(m[2]); haveBal = true; } }
   }
   if (!acct) acct = 'BOG';
   out.accounts.push({ iban: acct, bank: 'BOG', cur: 'GEL', from, to, startBal: haveBal ? Math.round(startBal * 100) / 100 : null });
   const h = (txs.rows[0] || []).map(S_);
   const curCols = h.map((x, i) => /^[A-Z]{3}$/.test(x) ? i : -1).filter(i => i >= 0);
   const seen = {};
+  const di = Math.max(1, h.findIndex(x => /^(დანიშნულება|description|details)$/i.test(x)));
   for (let i = 1; i < txs.rows.length; i++) {
     const r = txs.rows[i]; const date = toDate(r[0]); if (!date) continue;
-    const desc = S_(r[1]);
+    const desc = S_(r[di]);
     for (const ci of curCols) {
       const amt = toNum(r[ci]); if (!amt) continue;
       const cur = h[ci];
@@ -777,14 +790,21 @@ function parseBOG(sheets){
   return out;
 }
 // merchant / bank category / partner account / card from a Bank of Georgia description ("key: value; key: value")
+// English statement wording → the Georgian keys / operation types used below
+const BOG_KEYS = { 'amount': 'თანხა', 'merchant': 'ობიექტი', 'object': 'ობიექტი', 'beneficiary': 'მიმღები', 'recipient': 'მიმღები', 'receiver': 'მიმღები',
+  'sender': 'გადმომრიცხავი', 'payer': 'გადმომრიცხავი', 'remitter': 'გადმომრიცხავი', 'account': 'ანგარიში', 'purpose': 'დანიშნულება', 'reference': 'დანიშნულება',
+  'payment details': 'დანიშნულება', 'description': 'დანიშნულება', 'card no': 'ბარათის No', 'card number': 'ბარათის No', 'card': 'ბარათის No', 'atm': 'ბანკომატი', 'date': 'თარიღი', 'mcc': 'MCC' };
+const BOG_TYPES = [[/^payment$/i, 'გადახდა'], [/^(outgoing )?transfer$/i, 'გადარიცხვა'], [/^(incoming( transfer)?|receipt|credit|deposit)$/i, 'ჩარიცხვა'],
+  [/^(cash withdrawal|atm withdrawal|withdrawal)$/i, 'განაღდება'], [/^(conversion|exchange|currency exchange)$/i, 'კონვერტაცია'], [/fee|commission/i, 'საკომისიო']];
 function buildBOG(desc){
-  const type = desc.split(' - ')[0].trim();
+  let type = desc.split(' - ')[0].trim();
+  for (const [re, ka] of BOG_TYPES) if (re.test(type)) { type = ka; break; }
   const kv = {};
-  desc.split(';').forEach(part => { const j = part.indexOf(':'); if (j > 0) kv[part.slice(0, j).replace(/^.*\s-\s*/, '').trim()] = part.slice(j + 1).trim(); });
+  desc.split(';').forEach(part => { const j = part.indexOf(':'); if (j > 0) { let k = part.slice(0, j).replace(/^.*\s-\s*/, '').trim(); k = BOG_KEYS[k.toLowerCase()] || k; kv[k] = part.slice(j + 1).trim(); } });
   let merchant = (kv['ობიექტი'] || '').split(',')[0].trim() || kv['მიმღები'] || kv['გადმომრიცხავი'] || '';
   const mcc = kv['MCC'] || '';
   let bankCat = mcc ? (MCC[mcc] || 'MCC ' + mcc) : type;
-  if (/სესხის დაფარვა/.test(desc)) { bankCat = 'სესხის დაფარვა'; merchant = merchant || 'სესხის დაფარვა'; }
+  if (/სესხის დაფარვა|loan repayment|loan payment/i.test(desc)) { bankCat = 'სესხის დაფარვა'; merchant = merchant || 'სესხის დაფარვა'; }
   else if (type === 'გადარიცხვა') bankCat = 'პირადი გადარიცხვა';
   else if (type === 'ჩარიცხვა') bankCat = SALARY_RE.test(kv['დანიშნულება'] || '') ? 'ხელფასი' : (mcc ? bankCat : 'ჩარიცხვა');
   else if (type === 'განაღდება') { bankCat = 'განაღდება'; merchant = 'განაღდება (ბანკომატი)'; }
@@ -793,6 +813,68 @@ function buildBOG(desc){
   if (!merchant) merchant = type || desc.slice(0, 40);
   return { bank: 'BOG', desc, info: '', merchant, bankCat, partnerAcct: (IBAN_RE.exec(kv['ანგარიში'] || '') || [])[0] || '',
     op: type === 'კონვერტაცია' ? 'FX' : '', card: (kv['ბარათის No'] || '').replace(/[^\d]/g, '') };
+}
+
+/* ---------- any other bank: Excel / CSV with a header row (date + description + amount or debit/credit) ---------- */
+const GH = {
+  date: /^(თარიღი|ოპერაციის თარიღი|ტრანზაქციის თარიღი|გატარების თარიღი|date|transaction date|operation date|posting date|value date|booking date|дата|дата операции)$/i,
+  desc: /(დანიშნულება|აღწერა|დეტალები|ოპერაციის შინაარსი|description|details|purpose|narrative|transaction details|назначение|описание)/i,
+  amount: /^(თანხა|ოპერაციის თანხა|amount|transaction amount|сумма)$/i,
+  debit: /(გასული|დებეტი|ხარჯი|debit|paid out|withdrawal|outflow|расход|дебет)/i,
+  credit: /(შემოსული|კრედიტი|შემოსავალი|credit|paid in|deposit|inflow|приход|кредит)/i,
+  cur: /^(ვალუტა|currency|валюта)$/i,
+  partner: /(პარტნიორ|მიმღებ|გამგზავნ|კონტრაგენტ|counterparty|beneficiary|partner|payee|payer|контрагент|получатель)/i
+};
+const BANK_BY_CODE = { TB: 'TBC', BG: 'BOG', LB: 'ლიბერთი', CD: 'კრედო', BS: 'ბაზისი', TE: 'ტერაბანკი', PC: 'პროკრედიტი', HB: 'ხალიკი', CR: 'ქართუ', KS: 'ტერაბანკი', SB: 'სილქ ბანკი', IS: 'ისბანკი', VT: 'VTB', ZB: 'ზირაათი', PS: 'პაშა' };
+function parseGeneric(sheets, fileName){
+  const out = { bank: 'OTHER', accounts: [], tx: [] };
+  for (const sh of sheets) {
+    let hi = -1, H = null;
+    for (let i = 0; i < Math.min(40, sh.rows.length) && hi < 0; i++) {
+      const r = (sh.rows[i] || []).map(S_); const f = k => r.findIndex(x => x && GH[k].test(x));
+      const d = f('date'), ds = r.findIndex((x, j) => j !== d && x && GH.desc.test(x)), a = f('amount'), db = f('debit'), cr = f('credit');
+      if (d >= 0 && ds >= 0 && (a >= 0 || (db >= 0 && cr >= 0))) { hi = i; H = { d, ds, a, db, cr, cur: f('cur'), p: r.findIndex((x, j) => j !== ds && x && GH.partner.test(x)) }; }
+    }
+    if (hi < 0) continue;
+    const headText = sh.rows.slice(0, hi + 1).flat().map(S_).join(' ') + ' ' + sh.name + ' ' + (fileName || '');
+    const acct = (headText.match(IBAN_RE) || [])[0] || (fileName || sh.name || 'ანგარიში').replace(/\.[^.]+$/, '');
+    const code = /^GE\d{2}([A-Z]{2})/.exec(acct); const bankName = code ? (BANK_BY_CODE[code[1]] || code[1]) : 'სხვა ბანკი';
+    const defCur = (headText.match(/\b(GEL|USD|EUR|GBP)\b/) || ['GEL'])[0];
+    const seen = {}; const dates = [];
+    for (let i = hi + 1; i < sh.rows.length; i++) {
+      const r = sh.rows[i] || []; const date = toDate(r[H.d]); if (!date) continue;
+      let amt = H.a >= 0 ? toNum(r[H.a]) : (toNum(r[H.cr]) || 0) - Math.abs(toNum(r[H.db]) || 0);
+      if (!amt) continue; amt = Math.round(amt * 100) / 100;
+      const desc = S_(r[H.ds]), partner = H.p >= 0 ? S_(r[H.p]) : '';
+      const cur = (H.cur >= 0 && /^[A-Z]{3}$/.test(S_(r[H.cur]))) ? S_(r[H.cur]) : defCur;
+      const mm = /MCC:?\s*(\d{4})/i.exec(desc);
+      const merchant = (partner || desc.replace(/^POS\s*-\s*/i, '').split(/[;,]/)[0]).trim().slice(0, 60) || 'ოპერაცია';
+      const base = `GEN:${acct}:${date}:${cur}:${amt}:${hash(desc.replace(/\s+/g, ''))}`; seen[base] = (seen[base] || 0) + 1;
+      out.tx.push({ id: base + '#' + seen[base], bank: 'OTHER', bankName, acct, date, amt, cur, desc, info: partner, merchant,
+        bankCat: mm ? (MCC[mm[1]] || 'MCC ' + mm[1]) : (amt > 0 ? 'ჩარიცხვა' : 'გადახდა'), partnerAcct: (desc.match(IBAN_RE) || [])[0] || '', op: '', card: '' });
+      dates.push(date);
+    }
+    dates.sort();
+    out.accounts.push({ iban: acct, bank: 'OTHER', bankName, cur: defCur, from: dates[0] || null, to: dates[dates.length - 1] || null, startBal: null });
+  }
+  return out;
+}
+// CSV → the same {name, rows} shape as an Excel sheet (comma, semicolon or tab; quoted fields)
+function readCsv(text, name){
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/).slice(0, 5).join('\n');
+  const delim = [';', '\t', ','].map(d => [d, (first.match(new RegExp(d === '\t' ? '\t' : '\\' + d, 'g')) || []).length]).sort((a, b) => b[1] - a[1])[0][0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; }
+    else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cell); cell = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += ch;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return [{ name: name || 'csv', rows: rows.map(r => r.map(c => { const t = c.trim(); return t === '' ? null : t; })) }];
 }
 
 /* ---------- PDF statements (TBC & Bank of Georgia) — read in the browser with pdf.js, nothing is uploaded ---------- */
@@ -832,27 +914,39 @@ function pdfLines(items){
   });
 }
 const PDF_NUM = /^-?\d[\d,]*(\.\d+)?$/;
-const PDF_DATE = /^\d{2}\/\d{2}\/\d{4}$/;
-// table rows across pages. cfg: { text: [{key, label}], amounts: [{key, label}] } — header labels are matched by prefix.
-// A row starts at a date in the first column; any other word there ("ნაშთი", totals) ends the row. Lines above the first
-// row on a page continue the last row of the previous page.
+const PDF_DATE = /^\d{2}[\/.]\d{2}[\/.]\d{4}$/;
+// table rows across pages. cfg: { text: [{key, labels}], amounts: [{key, labels}] } — header cells matched by prefix,
+// Georgian or English ("დანიშნულება" / "Description", "გასული თანხა" / "Paid Out").
+// A row starts at a date in the first column; any other word there ("ნაშთი", "Balance", totals) ends the row. Lines above the
+// first row on a page continue the last row of the previous page.
+const PDF_DATE_HEAD = /^(თარიღი|date|transaction date|posting date|დათა)$/i;
+const PDF_HEAD_2ND = /^(თანხა|out|in|information|ინფორმაცია|amount|date)$/i;      // second line of a two-line header cell
+const PDF_FOOTER = /^\d+\s*-\s*\d+$|^გვ\.|კონფიდენციალური|^page\s*\d|confidential|^\d+\s*\/\s*\d+$/i;
+const startsAny = (s, labels) => { const t = s.toLowerCase(); return labels.some(l => t.startsWith(l.toLowerCase())); };
 function pdfTable(pages, cfg){
   const rows = []; let last = null; let pageNo = 0;
   for (const items of pages) {
     pageNo++;
-    const hd = items.filter(it => it.s.trim() === 'თარიღი').find(h => items.some(o => o !== h && Math.abs(o.y - h.y) < 12 && o.s.trim().startsWith(cfg.text[0].label)));
+    const hd = items.filter(it => PDF_DATE_HEAD.test(it.s.trim())).find(h => items.some(o => o !== h && Math.abs(o.y - h.y) < 14 && startsAny(o.s.trim(), cfg.text[0].labels)));
     if (!hd) continue;
-    const near = label => items.filter(o => Math.abs(o.y - hd.y) < 14 && o.s.trim().startsWith(label)).sort((a, b) => Math.abs(a.y - hd.y) - Math.abs(b.y - hd.y))[0];
-    const tcols = cfg.text.map(c => ({ ...c, h: near(c.label) })), acols = cfg.amounts.map(c => ({ ...c, h: near(c.label) })).filter(c => c.h);
+    // header cells: words on the header line + a second header line right below, merged by horizontal overlap
+    const hdrItems = items.filter(o => Math.abs(o.y - hd.y) < 6 || (o.y < hd.y && hd.y - o.y < 16 && PDF_HEAD_2ND.test(o.s.trim())));
+    const cells = [];
+    for (const it of hdrItems.slice().sort((a, b) => a.x - b.x)) {
+      const c = cells.find(c => it.x < c.r + 4 && it.x + it.w > c.l - 4);
+      if (c) { c.items.push(it); c.l = Math.min(c.l, it.x); c.r = Math.max(c.r, it.x + it.w); } else cells.push({ l: it.x, r: it.x + it.w, items: [it] });
+    }
+    for (const c of cells) { c.text = c.items.slice().sort((a, b) => b.y - a.y || a.x - b.x).map(i => i.s.trim()).join(' '); c.x = c.l; c.w = c.r - c.l; }
+    const near = labels => cells.find(c => startsAny(c.text, labels));
+    const tcols = cfg.text.map(c => ({ ...c, h: near(c.labels) })), acols = cfg.amounts.map(c => ({ ...c, h: near(c.labels) })).filter(c => c.h);
     if (!tcols[0].h || !acols.length) continue;
+    for (let i = 1; i < tcols.length; i++) if (!tcols[i].h) tcols[i].h = { x: (tcols[i - 1].h.x + tcols[i - 1].h.w + Math.min(...acols.map(c => c.h.x))) / 2, w: 0 };
     const cx = it => it.x + it.w / 2;
-    // date column ends just right of its header ("თარიღი"); description text may start far left of its centred header
+    // date column ends just right of its header; description text may start far left of its centred header
     const dateEdge = Math.min(hd.x + hd.w + 8, (cx(hd) + cx(tcols[0].h)) / 2);
     const zone = Math.min(...acols.map(c => c.h.x)) - 25;
-    const footer = items.filter(it => /^\d+\s*-\s*\d+$|^გვ\.|კონფიდენციალური/.test(it.s.trim())).reduce((m, it) => Math.max(m, it.y), -1e9);
-    // header block: the labels plus their second line ("გასული / თანხა") — never part of a row
-    const headerSet = new Set([hd, ...tcols.map(c => c.h), ...acols.map(c => c.h)].filter(Boolean));
-    for (const it of items) if (it.s.trim() === 'თანხა' && it.y < hd.y && hd.y - it.y < 16) headerSet.add(it);
+    const footer = items.filter(it => PDF_FOOTER.test(it.s.trim())).reduce((m, it) => Math.max(m, it.y), -1e9);
+    const headerSet = new Set(hdrItems);           // header words are never part of a row
     const body = items.filter(it => it.y < hd.y - 4 && it.y > footer + 2 && !headerSet.has(it));
     // left edge of every text column after the first (smallest x of text sitting right of the midpoint between headers)
     const edges = tcols.slice(1).map((c, i) => { const mid = (cx(tcols[i].h) + cx(c.h)) / 2; const xs = body.filter(it => it.x > mid && it.x < zone && !PDF_NUM.test(it.s.trim())).map(it => it.x); return xs.length ? Math.min(...xs) - 3 : mid; });
@@ -883,12 +977,13 @@ function pdfTable(pages, cfg){
 const pdfPageText = items => pdfLines(items).map(l => l.text);
 function parseTBCpdf(pages){
   const head = pdfPageText(pages[0] || []); const all = head.join('\n');
-  if (!/ამონაწერი ანგარიშიდან/.test(all)) return null;
+  if (!/ამონაწერი ანგარიშიდან|account statement/i.test(all)) return null;
   const acct = (all.match(/GE\d{2}TB\d{16}/) || [])[0]; if (!acct) return null;
-  const per = all.match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/);
+  const per = all.match(/(\d{2}[\/.]\d{2}[\/.]\d{4})\s*-\s*(\d{2}[\/.]\d{2}[\/.]\d{4})/);
   const numAfter = re => { const l = head.find(x => re.test(x)); const m = l && l.replace(re, '').match(/-?\d[\d,]*\.\d+/); return m ? toNum(m[0]) : null; };
-  const startBal = numAfter(/საწყისი ნაშთი/), endBal = numAfter(/საბოლოო ნაშთი/);
-  const rows = pdfTable(pages, { text: [{ key: 'desc', label: 'დანიშნულება' }, { key: 'info', label: 'დამატებითი' }], amounts: [{ key: 'out', label: 'გასული' }, { key: 'in', label: 'შემოსული' }, { key: 'bal', label: 'ბალანსი' }] });
+  const startBal = numAfter(/საწყისი ნაშთი|opening balance|starting balance/i), endBal = numAfter(/საბოლოო ნაშთი|closing balance/i);
+  const rows = pdfTable(pages, { text: [{ key: 'desc', labels: ['დანიშნულება', 'description'] }, { key: 'info', labels: ['დამატებითი', 'additional'] }],
+    amounts: [{ key: 'out', labels: ['გასული', 'paid out', 'debit', 'withdraw'] }, { key: 'in', labels: ['შემოსული', 'paid in', 'credit', 'deposit'] }, { key: 'bal', labels: ['ბალანსი', 'balance'] }] });
   const out = { bank: 'TBC', accounts: [{ iban: acct, bank: 'TBC', cur: 'GEL', from: per && toDate(per[1]), to: per && toDate(per[2]), startBal }], tx: [] };
   for (const r of rows) {
     const desc = r.text.desc || '', info = r.text.info || '', partner = info.split(',')[0].trim();
@@ -913,12 +1008,12 @@ function parseTBCpdf(pages){
 }
 function parseBOGpdf(pages){
   const head = pdfPageText(pages[0] || []); const all = head.join('\n');
-  if (!/ანგარიშიდან ამონაწერი/.test(all)) return null;
+  if (!/ანგარიშიდან ამონაწერი|account statement|statement of account/i.test(all)) return null;
   const acct = (all.match(/GE\d{2}BG\d{16}/) || [])[0]; if (!acct) return null;
-  const per = all.match(/ამონაწერის პერიოდი:?\s*(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/) || all.match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}\/\d{2}\/\d{4})/);
-  const firstNum = re => { const l = head.find(x => re.test(x)); const m = l && l.replace(/\d{2}\/\d{2}\/\d{4}/g, '').replace(re, '').match(/-?\d[\d,]*(\.\d+)?/); return m ? toNum(m[0]) : null; };
-  const startBal = firstNum(/საწყისი ნაშთი:?/), endBal = firstNum(/საბოლოო ნაშთი:?/);
-  const rows = pdfTable(pages, { text: [{ key: 'desc', label: 'დანიშნულება' }], amounts: ['GEL', 'USD', 'EUR', 'GBP'].map(c => ({ key: c, label: c })) });
+  const per = all.match(/(?:ამონაწერის პერიოდი|statement period|period):?\s*(\d{2}[\/.]\d{2}[\/.]\d{4})\s*-\s*(\d{2}[\/.]\d{2}[\/.]\d{4})/i) || all.match(/(\d{2}[\/.]\d{2}[\/.]\d{4})\s*-\s*(\d{2}[\/.]\d{2}[\/.]\d{4})/);
+  const firstNum = re => { const l = head.find(x => re.test(x)); const m = l && l.replace(/\d{2}[\/.]\d{2}[\/.]\d{4}/g, '').replace(re, '').match(/-?\d[\d,]*(\.\d+)?/); return m ? toNum(m[0]) : null; };
+  const startBal = firstNum(/საწყისი ნაშთი:?|opening balance:?/i), endBal = firstNum(/საბოლოო ნაშთი:?|closing balance:?/i);
+  const rows = pdfTable(pages, { text: [{ key: 'desc', labels: ['დანიშნულება', 'description', 'details'] }], amounts: ['GEL', 'USD', 'EUR', 'GBP'].map(c => ({ key: c, labels: [c] })) });
   const out = { bank: 'BOG', accounts: [{ iban: acct, bank: 'BOG', cur: 'GEL', from: per && toDate(per[1]), to: per && toDate(per[2]), startBal }], tx: [] };
   const seen = {};
   for (const r of rows) {
@@ -943,15 +1038,33 @@ function tbcPosCat(desc){
   const segs = (desc || '').split(',').map(s => s.trim()); const i = segs.findIndex(s => /^MCC:/.test(s));
   const c = i > 0 ? segs[i - 1] : ''; return c && c !== 'კონვერტაცია' ? c : (mm ? 'MCC ' + mm[1] : '');
 }
+// well-known Georgian shops / services by name — used when the bank gave no usable category (other banks, missing MCC)
+const MERCHANT_HINTS = [
+  [/nikora|ნიკორა|carrefour|კარფურ|spar\b|სპარ|ori\s*nabiji|2\s*nabiji|ორი ნაბიჯი|agrohub|აგროჰაბ|fresco|ფრესკო|magniti|მაგნიტ|goodwill|გუდვილ|europroduct|ევროპროდუქტ|libre|zgapari|ambari/i, 'სუპერმარკეტები'],
+  [/wolt|glovo|bolt\s*food|mcdonald|kfc|subway|dunkin|wendy|burger|pizza|cafe|კაფე|restaurant|რესტორ|coffee|ყავა/i, 'კაფე / სწრაფი კვება'],
+  [/bolt(?!\s*food)|yandex\s*go|uber|maxim|taxi|ტაქსი/i, 'ტაქსი'],
+  [/gulf|rompetrol|socar|wissol|lukoil|portal|neogas|ფორთალ|როპეტროლ/i, 'საწვავი'],
+  [/aversi|ავერსი|psp|ფსპ|gpc|ჯიპისი|pharmadepot|pharmacy|აფთიაქ|farmacia/i, 'აფთიაქი'],
+  [/magti|მაგთი|silknet|სილქნეტ|cellfie|beeline|geocell|ჯეოსელ/i, 'კავშირგაბმულობა'],
+  [/telasi|თელასი|energo|ენერგო|gwp|ჯი\s*დაბლიუ|tbilisi\s*energy|თბილისი ენერგი|dasuftaveba|დასუფთავ|water|წყალ|gas\b|გაზ/i, 'კომუნალური'],
+  [/zara|h&m|lc\s*waikiki|defacto|koton|adidas|nike|puma|reserved|bershka|pull&bear|mango/i, 'ტანსაცმელი'],
+  [/cinema|კინო|amirani|ამირან|rustaveli|ticket|ბილეთ/i, 'გართობა'],
+  [/biblusi|ბიბლუს|bookstore|წიგნის მაღაზ/i, 'წიგნები'],
+  [/metro|მეტრო|ავტობუს|მიკროავტობუს|transport/i, 'ტრანსპორტი']
+];
+const WEAK_CAT = /^(|MCC \d+|გადახდა|სხვა ხარჯები|სხვადასხვა ხარჯები|საყიდლები|ოპერაცია|payment|purchase)$/i;
 // corrections that apply to every transaction (new imports and already saved ones)
 function refineTx(t){
   const d = t.desc || '';
+  if (WEAK_CAT.test(t.bankCat || '') && t.amt < 0) { const h = MERCHANT_HINTS.find(([re]) => re.test((t.merchant || '') + ' ' + d)); if (h) t.bankCat = h[1]; }
+  // other banks: a transfer to / from a person
+  if (t.bank === 'OTHER' && /^(გადახდა|ჩარიცხვა)$/.test(t.bankCat || '') && /გადარიცხვ|transfer|p2p|перевод/i.test(d) && !SALARY_RE.test(d)) t.bankCat = 'პირადი გადარიცხვა';
   if (t.bank === 'TBC' && /^POS/.test(d)) { const c = tbcPosCat(d); if (c) t.bankCat = c; }
   if (SUB_RE.test(t.merchant || '') || SUB_RE.test(d) && /^POS|გადახდა/.test(d)) t.bankCat = 'გამოწერები';
   if (t.amt > 0 && SALARY_RE.test(d + ' ' + (t.info || '')) && !/^POS/.test(d)) t.bankCat = 'ხელფასი';
   if (/glovo|wolt|bolt\s*food|yandex\s*eda/i.test(t.merchant || '')) t.bankCat = 'კაფე / სწრაფი კვება';                 // food delivery, whatever MCC the bank used
-  if (/დეპოზიტ/.test(d)) { t.op = 'DEP'; t.bankCat = 'დეპოზიტი / დანაზოგი'; t.merchant = t.amt < 0 ? 'დეპოზიტზე შენატანი' : 'დეპოზიტიდან'; }  // own savings
-  if (/დანიშნულება:\s*კონვერტაცია/.test(d)) { t.op = 'FX'; t.bankCat = 'კონვერტაცია'; }                                // currency exchange
+  if (/დეპოზიტ|to deposit|deposit (top|replen|account)/i.test(d)) { t.op = 'DEP'; t.bankCat = 'დეპოზიტი / დანაზოგი'; t.merchant = t.amt < 0 ? 'დეპოზიტზე შენატანი' : 'დეპოზიტიდან'; }  // own savings
+  if (/(დანიშნულება|purpose|reference):\s*(კონვერტაცია|conversion|currency exchange)/i.test(d) || /^(conversion|currency exchange)\b/i.test(d)) { t.op = 'FX'; t.bankCat = 'კონვერტაცია'; }                                // currency exchange
   if (/სესხის გაცემა/.test(d) && t.amt > 0) { t.bankCat = 'სესხის მიღება'; t.merchant = 'სესხის გაცემა (ბანკიდან)'; }
   if (t.merchant === 'ჩარიცხვა' && /ბანკებს შორის/.test(d)) t.merchant = 'ჩარიცხვა სხვა ბანკიდან';
   // TBC PDF: money sent to / received from a person ("საჩუქარი", "შაურმა" + person + IBAN) is a personal transfer
@@ -969,15 +1082,18 @@ async function importFiles(files){
       const buf = await f.arrayBuffer();
       const isPdf = /\.pdf$/i.test(f.name) || new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(5, buf.byteLength))) === '%PDF-';
       let p;
+      const isCsv = /\.(csv|txt)$/i.test(f.name);
       if (isPdf) {
         const pages = await readPdf(buf);
         p = parseTBCpdf(pages) || parseBOGpdf(pages);
-        if (!p) { lines.push(`✕ ${f.name}: PDF ვერ ვიცანი (საჭიროა TBC-ის ან საქართველოს ბანკის ამონაწერი)`); continue; }
+        if (!p) { lines.push(`✕ ${f.name}: ამ ბანკის PDF ჯერ არ იკითხება — ჩატვირთე Excel (xlsx) ან CSV ამონაწერი`); continue; }
       } else {
-        const sheets = await readXlsx(buf);
-        p = parseTBC(sheets);
+        if (/\.xls$/i.test(f.name)) { lines.push(`✕ ${f.name}: ძველი .xls ფორმატია — ბანკიდან ჩამოტვირთე xlsx ან CSV`); continue; }
+        const sheets = isCsv ? readCsv(new TextDecoder('utf-8').decode(buf), f.name) : await readXlsx(buf);
+        p = isCsv ? { accounts: [] } : parseTBC(sheets);
         if (!p.accounts.length) p = parseBOG(sheets);
-        if (!p.accounts.length) { lines.push(`✕ ${f.name}: ფორმატი ვერ ვიცანი (საჭიროა TBC-ის ან საქართველოს ბანკის xlsx ან PDF ამონაწერი)`); continue; }
+        if (!p.accounts.length) p = parseGeneric(sheets, f.name);        // any other bank (Excel / CSV with a header row)
+        if (!p.accounts.length || !p.tx.length) { lines.push(`✕ ${f.name}: ფორმატი ვერ ვიცანი — საჭიროა სვეტები: თარიღი, დანიშნულება/აღწერა და თანხა (ან გასული/შემოსული)`); continue; }
       }
       p.tx.forEach(refineTx);
       // duplicates: same id, or same signature (the same payment arriving once from Excel and once from PDF / overlapping periods)
@@ -991,12 +1107,13 @@ async function importFiles(files){
       }
       for (const a of p.accounts) {
         const ex = state.accounts[a.iban] || {};
-        state.accounts[a.iban] = { bank: a.bank, cur: a.cur, label: ex.label || '' };
+        state.accounts[a.iban] = { bank: a.bank, bankName: a.bankName || ex.bankName || '', cur: a.cur, label: ex.label || '' };
         const imp = { file: f.name, bank: a.bank, acct: a.iban, from: a.from, to: a.to, startBal: a.startBal, added: n, dup: d, at: new Date().toISOString() };
         state.imports.push(imp); fresh.push(imp);
       }
       total += n;
-      lines.push(`✓ ${p.bank === 'TBC' ? 'TBC' : 'საქართველოს ბანკი'} ${maskIban(p.accounts[0].iban)}${isPdf ? ' (PDF)' : ''}: ${n} ახალი${d ? `, ${d} უკვე იყო` : ''}`);
+      lines.push(`✓ ${bankLabel(p.accounts[0])} ${maskIban(p.accounts[0].iban)}${isPdf ? ' (PDF)' : isCsv ? ' (CSV)' : ''}: ${n} ახალი${d ? `, ${d} უკვე იყო` : ''}`);
+      if (p.bank === 'OTHER') lines.push('   ℹ სხვა ბანკი — წაკითხულია ზოგადი წესით (თარიღი, დანიშნულება, თანხა). გადაამოწმე რამდენიმე ტრანზაქცია.');
       // PDF reading check: opening balance + every transaction must equal the bank's closing balance
       if (p.check) {
         const diff = Math.round((p.check.start + p.check.sum - p.check.end) * 100) / 100;
@@ -1068,7 +1185,7 @@ function viewHome(R){
   const mp = monthProgress(i);
   let h = '';
   if (firstRun && !state.tx.length) h += `<div class="card" style="background:var(--accent-soft);border-color:transparent"><h2>მოგესალმები 👋</h2>
-    <p class="small t2" style="margin:0 0 10px">ეს სანიმუშო გეგმაა. ჩაწერე შენი თანხები „გეგმაში“, შემდეგ ჩატვირთე TBC-ის და საქართველოს ბანკის ამონაწერები და ნახავ, როგორ სრულდება გეგმა.</p>
+    <p class="small t2" style="margin:0 0 10px">ეს სანიმუშო გეგმაა. ჩაწერე შენი თანხები „გეგმაში“, შემდეგ ჩატვირთე ბანკის ამონაწერები (TBC, საქართველოს ბანკი ან სხვა ბანკის Excel/CSV) და ნახავ, როგორ სრულდება გეგმა.</p>
     <div class="btns"><button class="btn primary block" data-act="import">ამონაწერის ჩატვირთვა</button></div></div>`;
   // month result
   h += `<div class="card"><h2>${MNL[i % 12]}: გეგმა და ფაქტი${inPlan ? '' : '<span class="r">გეგმის პერიოდს გარეთ</span>'}</h2>
@@ -1246,7 +1363,7 @@ function viewTx(R){
   if (ui.txFilter === 'int') list = list.filter(x => x.e.cat === '__internal');
   list.sort((a, b) => b.t.date.localeCompare(a.t.date) || Math.abs(b.t.amt) - Math.abs(a.t.amt));
   let inS = 0, outS = 0; for (const x of state.tx) if (ymToIdx(x.date) === i && effCat(x).cat !== '__internal') { const a = txGel(x); if (a > 0) inS += a; else outS -= a; }
-  let h = `<div class="drop" id="drop"><b>ამონაწერის ჩატვირთვა</b><p>TBC ან საქართველოს ბანკის ამონაწერი — Excel (xlsx) ან PDF, რამდენიმე ფაილიც ერთად. ფაილი მხოლოდ ამ მოწყობილობაზე მუშავდება.</p>
+  let h = `<div class="drop" id="drop"><b>ამონაწერის ჩატვირთვა</b><p>TBC და საქართველოს ბანკი — Excel ან PDF (ქართული ან ინგლისური). სხვა ბანკი — Excel ან CSV. რამდენიმე ფაილიც ერთად. ფაილი მხოლოდ ამ მოწყობილობაზე მუშავდება.</p>
     <button class="btn primary" data-act="import">ფაილის არჩევა</button></div>`;
   list.sort((a, b) => b.t.date.localeCompare(a.t.date) || Math.abs(b.t.amt) - Math.abs(a.t.amt));
   h += `<div class="seg"><button data-act="filt" data-v="all" class="${ui.txFilter === 'all' ? 'on' : ''}">ყველა ${all}</button><button data-act="filt" data-v="unc" class="${ui.txFilter === 'unc' ? 'on' : ''}">კატეგ. გარეშე ${uncN}</button><button data-act="filt" data-v="int" class="${ui.txFilter === 'int' ? 'on' : ''}">შიდა ${intN}</button></div>`;
@@ -1261,7 +1378,7 @@ function viewTx(R){
     if (t.date !== day) { day = t.date; h += `<div class="day">${fmtDate(day)}${ui.txFilter === 'unc' ? ' ' + day.slice(0, 4) : ''}</div>`; }
     const chip = e.cat === '__internal' ? `<span class="chipc int">შიდა გადარიცხვა</span>` : e.cat ? `<span class="chipc">${esc(catName(e.cat))}</span>` : `<span class="chipc none">${e.src === 'manual' || e.src === 'rule' ? 'გეგმის გარეშე' : 'კატეგორია?'}</span>`;
     const acc = state.accounts[t.acct];
-    h += `<div class="tx ${e.cat === '__internal' ? 'internal' : ''}" data-act="tx" data-id="${esc(t.id)}"><div class="ic ${t.bank}">${t.bank === 'TBC' ? 'TBC' : 'BoG'}</div>
+    h += `<div class="tx ${e.cat === '__internal' ? 'internal' : ''}" data-act="tx" data-id="${esc(t.id)}"><div class="ic ${t.bank}">${bankShort(t)}</div>
       <div class="mid"><div class="m">${esc(t.merchant)}</div><div class="s">${esc(t.bankCat || '')}${t.card ? ' · ••' + esc(t.card.slice(-4)) : ''}${acc && acc.label ? ' · ' + esc(acc.label) : ''}</div></div>
       <div class="rt"><div class="a ${t.amt > 0 ? 'pos' : ''}">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)}${t.cur !== 'GEL' ? ' ' + t.cur : ''}</div>${chip}</div></div>`;
   }
@@ -1378,7 +1495,7 @@ function openTx(id){
   const srcTxt = e.src === 'manual' ? 'ხელით მინიჭებული' : e.src === 'rule' ? 'წესით' : e.src === 'auto' ? 'ავტომატურად: შენს ანგარიშებს შორის (გადარიცხვა / ბარათიდან ბარათზე / კონვერტაცია / დეპოზიტი)' : e.src === 'name' ? `ავტომატურად: ბანკის კატეგორია „${t.bankCat}“ → გეგმის სტრიქონი` : 'კატეგორია არ აქვს';
   const btn = (cid, label, extra) => `<button class="cbtn ${extra || ''} ${e.cat === cid || (cid === '__none' && !e.cat && e.src) ? 'cur' : ''}" data-act="setcat" data-id="${esc(t.id)}" data-cat="${cid}">${esc(label)}</button>`;
   let h = `<div class="grab"></div><h3>${esc(t.merchant)}</h3>
-    <div class="small t2"><b class="num ${t.amt > 0 ? 'pos' : ''}">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)} ${t.cur}</b> · ${fmtDate(t.date)} ${t.date.slice(0, 4)} · ${t.bank === 'TBC' ? 'TBC' : 'საქართველოს ბანკი'} ${maskIban(t.acct)}</div>
+    <div class="small t2"><b class="num ${t.amt > 0 ? 'pos' : ''}">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)} ${t.cur}</b> · ${fmtDate(t.date)} ${t.date.slice(0, 4)} · ${bankLabel(t)} ${maskIban(t.acct)}</div>
     <div class="det">${esc(t.desc)}${t.bankCat ? `<br><b>ბანკის კატეგორია:</b> ${esc(t.bankCat)}` : ''}</div>
     <div class="small"><b>ახლა:</b> ${e.cat ? esc(catName(e.cat)) : 'გეგმის გარეშე'} <span class="muted">(${srcTxt})</span></div>
     <div class="opts">
@@ -1539,6 +1656,7 @@ function viewMore(R){
     <label class="f">მინ. ბუფერი, ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="buffer" data-type="num" value="${S.buffer ?? ''}"></label>
     <label class="f">1 USD = ? ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="usdRate" data-type="num" value="${S.usdRate ?? ''}"></label>
     <label class="f">1 EUR = ? ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="eurRate" data-type="num" value="${S.eurRate ?? ''}"></label>
+    <label class="f">1 GBP = ? ₾<input class="in n" type="number" inputmode="decimal" step="any" data-list="settings" data-field="gbpRate" data-type="num" value="${S.gbpRate ?? ''}"></label>
   </div>
   <p class="small muted" style="margin:8px 0 6px">საწყისი ნაშთი = ყველა ანგარიშზე არსებული თანხა საწყისი თვის დასაწყისში.</p>
   <div class="small t2" style="margin:10px 0 4px">სცენარი</div>
@@ -1552,7 +1670,7 @@ function viewMore(R){
   if (!accs.length) h += `<div class="empty">ჯერ ამონაწერი არ ჩაგიტვირთავს.</div>`;
   for (const [iban, a] of accs) {
     const ts = state.tx.filter(t => t.acct === iban); const ds = ts.map(t => t.date).sort();
-    h += `<div class="list-row"><div class="tx" style="border:0;padding:0;margin:0;background:none;cursor:default"><div class="ic ${a.bank}">${a.bank === 'TBC' ? 'TBC' : 'BoG'}</div></div>
+    h += `<div class="list-row"><div class="tx" style="border:0;padding:0;margin:0;background:none;cursor:default"><div class="ic ${a.bank}">${bankShort(a)}</div></div>
       <div class="grow"><input class="in" style="padding:4px 6px;font-size:13px" data-acct="${esc(iban)}" value="${esc(a.label || '')}" placeholder="სახელი, მაგ. ხელფასის ბარათი">
       <div class="small muted wrap">${esc(iban)}</div><div class="small muted wrap">${ts.length} ტრანზაქცია${ds.length ? ' · ' + ds[0] + ' – ' + ds[ds.length - 1] : ''}</div></div>
       <button class="del" data-act="delacct" data-iban="${esc(iban)}" aria-label="ანგარიშის წაშლა">✕</button></div>`;
@@ -1687,7 +1805,7 @@ main.addEventListener('change', e => { if (e.target.dataset.list === 'settings' 
 const phone = document.getElementById('phone');
 phone.addEventListener('dragover', e => { e.preventDefault(); const d = document.getElementById('drop'); if (d) d.classList.add('hover'); });
 phone.addEventListener('dragleave', e => { if (e.target === phone) { const d = document.getElementById('drop'); if (d) d.classList.remove('hover'); } });
-phone.addEventListener('drop', e => { e.preventDefault(); const fs = [...(e.dataTransfer.files || [])].filter(f => /\.(xlsx|pdf)$/i.test(f.name)); if (fs.length) importFiles(fs); else toast('ჩააგდე .xlsx ან .pdf ამონაწერი'); });
+phone.addEventListener('drop', e => { e.preventDefault(); const fs = [...(e.dataTransfer.files || [])].filter(f => /\.(xlsx|pdf|csv)$/i.test(f.name)); if (fs.length) importFiles(fs); else toast('ჩააგდე .xlsx, .pdf ან .csv ამონაწერი'); });
 
 function exportBackup(){
   const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
