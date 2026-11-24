@@ -152,6 +152,9 @@ label.cat.mrg input{margin-top:3px;width:18px;height:18px;flex:none}
 .flag.over{background:var(--bad-bg);color:var(--neg)}
 .flag.ok{background:var(--good-bg);color:var(--pos)}
 .flag.unpl{background:var(--warn-bg);color:var(--text)}
+.flag.dout{background:rgba(127,127,127,.18);color:var(--text)}
+.rule-row{cursor:pointer}
+.mtr span:first-child{min-width:0;overflow-wrap:anywhere}
 .link{color:var(--accent);background:none;border:0;padding:0;cursor:pointer;font-weight:600}
 
 .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
@@ -515,7 +518,7 @@ function itemIndex(){
 }
 let IDX = itemIndex();
 let OWN = new Set(Object.keys(state.accounts));
-function refreshIndex(){ IDX = itemIndex(); OWN = new Set(Object.keys(state.accounts)); if (typeof nameCache !== 'undefined') nameCache = new Map(); }
+function refreshIndex(){ IDX = itemIndex(); OWN = new Set(Object.keys(state.accounts)); if (typeof nameCache !== 'undefined') nameCache = new Map(); if (typeof ruleKeyCache !== 'undefined') ruleKeyCache = new Map(); }
 // card-to-card P2P between own cards (BoG "TBC_P2P" −350 ↔ TBC "P2P გადარიცხვა" +350, posted up to 3 days apart):
 // the bank gives no account number, so pair them by opposite amount on two different own accounts
 const isP2P = t => /p2p/i.test(t.merchant || '') || /p2p/i.test(t.op || '');
@@ -550,18 +553,28 @@ function ruleApplies(r, t){
   if (!d) { const x = IDX.get(r.itemId); d = x ? (x.kind === 'income' ? 'in' : 'out') : null; }
   return !d || d === dirOf(t);
 }
+// a shop rule covers every spelling of that shop ("Ori Nabiji" = "FLT*2nabiji" = merged names), not only the exact text
+let ruleKeyCache = new Map();
+const ruleKey = r => { if (!ruleKeyCache.has(r.id)) ruleKeyCache.set(r.id, storeOf({ merchant: r.value }).key); return ruleKeyCache.get(r.id); };
+const ruleTargetOk = x => x.itemId === '__internal' || x.itemId === '__none' || IDX.has(x.itemId);
 function ruleFor(t){
   const m = (t.merchant || '').toLowerCase(), c = (t.bankCat || '').toLowerCase();
-  const ok = x => x.itemId === '__internal' || x.itemId === '__none' || IDX.has(x.itemId);
-  let r = state.rules.find(x => x.type === 'merchant' && m && x.value === m && ok(x) && ruleApplies(x, t));
-  if (!r) r = state.rules.find(x => x.type === 'bankcat' && c && x.value === c && ok(x) && ruleApplies(x, t));
+  let r = state.rules.find(x => x.type === 'merchant' && m && x.value === m && ruleTargetOk(x) && ruleApplies(x, t));
+  if (!r && m && !GENERIC_MERCHANT.test(m)) { const k = storeOf(t).key; r = state.rules.find(x => x.type === 'merchant' && !GENERIC_MERCHANT.test(x.value) && ruleKey(x) === k && ruleTargetOk(x) && ruleApplies(x, t)); }
+  if (!r) r = state.rules.find(x => x.type === 'bankcat' && c && x.value === c && ruleTargetOk(x) && ruleApplies(x, t));
   return r || null;
 }
+// names the bank gives to many unrelated payments — a "for all with this name" rule would mix different people / shops
+const GENERIC_MERCHANT = /^(p2p გადარიცხვა|tbc_p2p|jsc bog p2p transfer|ჩარიცხვა|ჩარიცხვა სხვა ბანკიდან|გადახდა|გადარიცხვა|ოპერაცია|განაღდება \(ბანკომატი\)|დეპოზიტზე შენატანი|დეპოზიტიდან|სესხის დაფარვა|სესხის გაცემა \(ბანკიდან\)|კონვერტაცია|საზოგადოებრივი ტრანსპორტი)$/i;
 // bank category → words that a matching plan line name contains (works for any plan, also renamed / own lines)
 // (line names may be Georgian, English or with typos — e.g. "Subscriptions", "საბსქრიფშენი", "sbuscribtion")
 const NAME_MATCH = [
   [/^სესხის (დაფარვა|დაზღვევა)$/, /სესხ|იპოთეკ|კრედიტ|განვადებ|loan|mortgage|credit/i],
-  [/^(სუპერმარკეტები|საკვების მაღაზიები|სასურსათო მაღაზიები)$/, /საკვებ|მარკეტ|სურსათ|პროდუქტ|სასადილო|კვება|საჭმელ|food|grocer|market/i],
+  [/^(სუპერმარკეტები|საკვების მაღაზიები|სასურსათო მაღაზიები|ალკოჰოლი და თამბაქო)$/, /საკვებ|მარკეტ|სურსათ|პროდუქტ|სასადილო|კვება|საჭმელ|food|grocer|market/i],
+  [/^(გადასახადები|სახელმწიფო მომსახურება)$/, /გადასახ|სახელმწიფ|ჯარიმ|tax|fine/i],
+  [/^(უნივერმაღები|ონლაინ შოპინგი|ელექტრონიკა)$/, /შოპინგ|ყიდვ|უნივერმაღ|ელექტრონ|shop|online|temu|amazon|aliexpress/i],
+  [/^(ყვავილები|საჩუქრები)$/, /ყვავილ|საჩუქ|flower|gift/i],
+  [/^(სხვადასხვა ხარჯები|სხვა)$/, /სხვადასხვა|სხვა ხარჯ|misc|other/i],
   [/^(კაფე \/ სწრაფი კვება|რესტორნები|ბარები)$/, /კაფე|რესტორ|მიწოდ|wolt|glovo|კვება|cafe|café|restaur|delivery|eat/i],
   [/^(საწვავი|ტაქსი|ტრანსპორტი|პარკინგი|მანქანა)$/, /ტრანსპორტ|საწვავ|ტაქსი|მანქან|ავტო|ბენზინ|transport|taxi|fuel|petrol|car\b|bolt|yandex/i],
   [/^(კომუნალური|კომუნალური, მობილური, ჯარიმები|კავშირგაბმულობა)$/, /კომუნალ|მობილურ|ინტერნეტ|ტელეფონ|დენ|გაზ|წყალ|utilit|bill|mobile|internet|phone/i],
@@ -577,7 +590,7 @@ const NAME_MATCH = [
   [/^(გამოწერები|ციფრული სერვისები)$/, /გამოწერ|ს[აუ]ბ?ს[კქ]რ|subs|sbus|subcr|sub\b|abonem|აბონემენტ|სტრიმ|stream|ციფრულ|digital|netflix|spotify|youtube|setanta|disney|apple|google/i],
   [/^სახლი და რემონტი$/, /სახლ|რემონტ|ავეჯ|home|house|repair|furnit/i],
   [/^მოგზაურობა$/, /მოგზაურ|შვებულ|დასვენ|travel|vacation|holiday|trip/i],
-  [/^განაღდება$/, /ნაღდ|განაღდ|ბანკომატ|cash|atm/i]
+  [/^(განაღდება|გადარიცხვა თანხის გატანა)$/, /ნაღდ|განაღდ|ბანკომატ|cash|atm/i]
 ];
 // letters only, Georgian → Latin, spelling variants folded (same idea as the store key) — to compare names written in either script
 const foldText = s => [...(s || '').toLowerCase()].map(c => (typeof GEO_LAT !== 'undefined' && GEO_LAT[c]) || c).join('')
@@ -620,7 +633,7 @@ function effCat(t){
   if (autoInternal(t)) return { cat: '__internal', src: 'auto' };
   const r = ruleFor(t), n = nameMatch(t);
   // a general bank-category rule ("ხელფასი → one line") must not beat a line named after this very sender ("ხელფასი – ორი ნაბიჯი")
-  if (r && !(r.type === 'bankcat' && n && n.strong && n.id !== r.itemId)) return { cat: r.itemId === '__none' ? null : r.itemId, src: 'rule' };
+  if (r && !(r.type === 'bankcat' && n && n.strong && n.id !== r.itemId)) return { cat: r.itemId === '__none' ? null : r.itemId, src: 'rule', rid: r.id };
   if (n) return { cat: n.id, src: 'name' };
   return { cat: null, src: null };
 }
@@ -1496,12 +1509,12 @@ function doMerge(id){
   if (name === null) return;
   state.merges = state.merges.filter(m => !oldIds.has(m.id));
   state.merges.push({ id: uid(), name: name.trim() || biggest.name, keys: [...keys], kv: 2 });
-  save(); toast(`გაერთიანდა: ${groups.length} სახელი → „${name.trim() || biggest.name}“`);
+  ruleKeyCache = new Map(); save(); toast(`გაერთიანდა: ${groups.length} სახელი → „${name.trim() || biggest.name}“`);
   openCat(id);
 }
 function openTx(id){
   const t = state.tx.find(x => x.id === id); if (!t) return;
-  const e = effCat(t);
+  const e = effCat(t), generic = GENERIC_MERCHANT.test(t.merchant || '');
   const srcTxt = e.src === 'manual' ? 'ხელით მინიჭებული' : e.src === 'rule' ? 'წესით' : e.src === 'auto' ? 'ავტომატურად: შენს ანგარიშებს შორის (გადარიცხვა / ბარათიდან ბარათზე / კონვერტაცია / დეპოზიტი)' : e.src === 'name' ? `ავტომატურად: ბანკის კატეგორია „${t.bankCat}“ → გეგმის სტრიქონი` : 'კატეგორია არ აქვს';
   const btn = (cid, label, extra) => `<button class="cbtn ${extra || ''} ${e.cat === cid || (cid === '__none' && !e.cat && e.src) ? 'cur' : ''}" data-act="setcat" data-id="${esc(t.id)}" data-cat="${cid}">${esc(label)}</button>`;
   let h = `<div class="grab"></div><h3>${esc(t.merchant)}</h3>
@@ -1509,9 +1522,10 @@ function openTx(id){
     <div class="det">${esc(t.desc)}${t.bankCat ? `<br><b>ბანკის კატეგორია:</b> ${esc(t.bankCat)}` : ''}</div>
     <div class="small"><b>ახლა:</b> ${e.cat ? esc(catName(e.cat)) : 'გეგმის გარეშე'} <span class="muted">(${srcTxt})</span></div>
     <div class="opts">
-      <label><input type="radio" name="scope" value="merchant" checked> ყველა „${esc(t.merchant)}“-ზე — ახლაც და მომავალშიც</label>
-      ${t.bankCat ? `<label><input type="radio" name="scope" value="bankcat"> ბანკის კატეგორიის ყველა ტრანზაქციაზე: „${esc(t.bankCat)}“</label>` : ''}
-      <label><input type="radio" name="scope" value="one"> მხოლოდ ამ ერთ ტრანზაქციაზე</label>
+      ${generic ? '' : `<label><input type="radio" name="scope" value="merchant" checked> ყველა „${esc(t.merchant)}“-ზე${isTransfer(t) ? (t.amt > 0 ? ' (შემოსულზე)' : ' (გასულზე)') : ''} — ახლაც და მომავალშიც</label>`}
+      ${t.bankCat ? `<label><input type="radio" name="scope" value="bankcat"> ბანკის კატეგორიის ყველა ტრანზაქციაზე: „${esc(t.bankCat)}“${isTransfer(t) ? (t.amt > 0 ? ' (შემოსულზე)' : ' (გასულზე)') : ''}</label>` : ''}
+      <label><input type="radio" name="scope" value="one"${generic ? ' checked' : ''}> მხოლოდ ამ ერთ ტრანზაქციაზე</label>
+      ${generic ? `<div class="small muted">„${esc(t.merchant)}“ ბანკის საერთო სახელია (სხვადასხვა ადამიანი / ოპერაცია), ამიტომ „ყველაზე“ წესი აქ არ ვარგა.</div>` : ''}
     </div>`;
   const groups = t.amt > 0 ? [['income'], ['fixed', 'variable', 'annual', 'oneoff']] : [['fixed', 'variable', 'annual', 'oneoff'], ['income']];
   for (const g of groups) {
@@ -1525,17 +1539,80 @@ function openTx(id){
     ${t.cat ? `<button class="btn block" data-act="clearcat" data-id="${esc(t.id)}">ხელით მინიჭების გაუქმება</button>` : ''}`;
   openSheet(h);
 }
+// new rule replaces older ones for the same name — a shop rule also replaces rules on the other spellings of that shop;
+// for transfers only the rule for the same direction (in / out keep separate rules)
+function addRule(type, value, cat, t){
+  const k = type === 'merchant' && !GENERIC_MERCHANT.test(value) ? storeOf({ merchant: value }).key : null;
+  const same = r => r.type === type && (r.value === value || (k && !GENERIC_MERCHANT.test(r.value) && ruleKey(r) === k));
+  state.rules = state.rules.filter(r => !(same(r) && (!isTransfer(t) || !r.dir || r.dir === dirOf(t))));
+  const nr = { id: uid(), type, value, itemId: cat, dir: dirOf(t) };
+  state.rules.push(nr); return nr;
+}
+/* ---------- rules review ---------- */
+const ruleTarget = r => r.itemId === '__none' ? 'გეგმის გარეშე' : r.itemId === '__internal' ? 'შიდა გადარიცხვა' : (catName(r.itemId) || '(წაშლილი სტრიქონი)');
+let autoGroups = new Map();
+// what each rule decides now (count, sum) and the automatic name-based matches grouped by bank category / shop
+function ruleStats(){
+  const rules = new Map(), auto = new Map(); let internal = 0, unc = 0;
+  for (const t of state.tx) {
+    const e = effCat(t), a = txGel(t);
+    if (e.src === 'rule') { const s = rules.get(e.rid) || { n: 0, sum: 0, tr: false, tx: [] }; s.n++; s.sum += a; s.tr = s.tr || isTransfer(t); s.tx.push(t); rules.set(e.rid, s); }
+    else if (e.src === 'name') {
+      const tr = isTransfer(t), dir = dirOf(t), base = t.bankCat || t.merchant || '—';
+      const k = (t.bankCat ? 'c:' : 'm:') + base.toLowerCase() + '|' + e.cat + (tr ? '|' + dir : '');
+      const g = auto.get(k) || { label: base, bankCat: t.bankCat || '', merchant: t.merchant || '', cat: e.cat, tr, dir, sum: 0, tx: [] };
+      g.sum += a; g.tx.push(t); auto.set(k, g);
+    }
+    else if (e.cat === '__internal' && e.src === 'auto') internal++;
+    else if (!e.cat && e.src === null) unc++;
+  }
+  autoGroups = auto;
+  return { rules, auto: new Map([...auto].sort((x, y) => y[1].tx.length - x[1].tx.length)), internal, unc };
+}
+const txMini = list => list.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 40).map(t => `<div class="mtr" data-act="tx" data-id="${esc(t.id)}"><span class="wrap">${fmtDate(t.date)} ${t.date.slice(0, 4)} · ${esc(t.merchant)}</span><span class="num">${t.amt > 0 ? '+' : ''}${fmt2(t.amt)}${t.cur !== 'GEL' ? ' ' + t.cur : ''}</span></div>`).join('')
+  + (list.length > 40 ? `<div class="small muted" style="padding:6px 0">… და კიდევ ${list.length - 40}</div>` : '');
+// the plan lines to choose from (income first for money coming in)
+function targetGrid(act, attrs, incoming, curId){
+  const b = (cid, label, extra) => `<button class="cbtn ${extra || ''} ${curId === cid ? 'cur' : ''}" data-act="${act}" ${attrs} data-cat="${cid}">${esc(label)}</button>`;
+  let h = '';
+  for (const g of incoming ? [['income'], ['fixed', 'variable', 'annual', 'oneoff']] : [['fixed', 'variable', 'annual', 'oneoff'], ['income']]) {
+    const items = g.flatMap(k => state[k]); if (!items.length) continue;
+    h += `<div class="ghead">${g[0] === 'income' ? 'შემოსავლები' : 'ხარჯები'}</div><div class="cgrid">${items.map(it => b(it.id, it.name || '(უსახელო)')).join('')}</div>`;
+  }
+  return h + `<div class="ghead">სხვა</div><div class="cgrid">${b('__internal', 'შიდა გადარიცხვა (არ ჩაითვალოს)', 'special')}${b('__none', 'გეგმის გარეშე', 'special')}</div>`;
+}
+function openRule(id){
+  const r = state.rules.find(x => x.id === id); if (!r) return;
+  const st = ruleStats().rules.get(r.id) || { n: 0, sum: 0, tr: false, tx: [] };
+  const incoming = r.dir ? r.dir === 'in' : (IDX.get(r.itemId) || {}).kind === 'income';
+  let h = `<div class="grab"></div><h3>${esc(r.value)}</h3>
+    <div class="small t2">${r.type === 'merchant' ? 'მაღაზია / მიმღები (ყველა მისი სახელი)' : 'ბანკის კატეგორია'}${r.dir && (st.tr || /გადარიცხ|ჩარიცხ|p2p/i.test(r.value)) ? ' · მხოლოდ ' + (r.dir === 'in' ? 'შემოსულ' : 'გასულ') + ' თანხაზე' : ''}</div>
+    <div class="small" style="margin:8px 0">${ruleTargetOk(r) ? `ახლა → <b>${esc(ruleTarget(r))}</b>` : '<span class="neg">⚠ გეგმის სტრიქონი წაშლილია — აირჩიე ახალი ან წაშალე წესი.</span>'}</div>
+    <div class="small t2">${st.n ? `ეხება <b>${st.n}</b> ტრანზაქციას · ${fmt(Math.abs(st.sum))} ₾` : 'ახლა არცერთ ტრანზაქციას არ ეხება: ან ასეთი ჯერ არ ჩატვირთულა, ან უფრო ზუსტი რამ სჭარბობს — ხელით მინიჭება, მაღაზიის წესი, ან სტრიქონი, რომლის სახელშიც გამგზავნი / ბანკი წერია (მაგ. „ხელფასი TBC“).'}</div>
+    ${st.n ? `<div class="mtx" style="max-height:220px;overflow:auto;margin:6px 0">${txMini(st.tx)}</div>` : ''}
+    <div class="ghead">გადაიტანე სხვა სტრიქონზე</div>${targetGrid('rule-set', `data-id="${r.id}"`, incoming, r.itemId)}
+    <div class="btns" style="margin-top:12px"><button class="btn block danger" data-act="delrule" data-id="${r.id}">წესის წაშლა</button><button class="btn block" data-act="close">დახურვა</button></div>`;
+  openSheet(h);
+}
+function openAutoRule(k){
+  const g = autoGroups.get(k); if (!g) return;
+  let h = `<div class="grab"></div><h3>${esc(g.label)}</h3>
+    <div class="small t2">${g.bankCat ? 'ბანკის კატეგორია' : 'მაღაზია / მიმღები'} · ავტომატურად → <b>${esc(catName(g.cat))}</b> (გეგმის სტრიქონის სახელით)</div>
+    <div class="small t2" style="margin-top:6px">${g.tx.length} ტრანზაქცია · ${fmt(Math.abs(g.sum))} ₾</div>
+    <div class="mtx" style="max-height:220px;overflow:auto;margin:6px 0">${txMini(g.tx)}</div>
+    <div class="ghead">სწორი სტრიქონი (შეიქმნება წესი)</div>${targetGrid('auto-set', `data-k="${esc(k)}"`, g.tr ? g.dir === 'in' : g.tx[0].amt > 0, g.cat)}
+    <button class="btn block" data-act="close" style="margin-top:12px">დახურვა</button>`;
+  openSheet(h);
+}
 function setCat(id, cat){
   const t = state.tx.find(x => x.id === id); if (!t) return;
   const scope = (document.querySelector('input[name="scope"]:checked') || {}).value || 'one';
   if (scope === 'one') { t.cat = cat; toast('მიენიჭა: ' + (cat === '__none' ? 'გეგმის გარეშე' : catName(cat))); }
   else {
     const value = (scope === 'merchant' ? t.merchant : t.bankCat || '').toLowerCase();
-    // replace an older rule for the same name — for transfers only the one for the same direction (in / out keep separate rules)
-    state.rules = state.rules.filter(r => !(r.type === scope && r.value === value && (!isTransfer(t) || !r.dir || r.dir === dirOf(t))));
-    state.rules.push({ id: uid(), type: scope, value, itemId: cat, dir: dirOf(t) });
+    const nr = addRule(scope, value, cat, t);
     if (t.cat) delete t.cat;
-    const n = state.tx.filter(x => { const e = effCat(x); return e.src === 'rule' && ruleFor(x) && ruleFor(x).value === value; }).length;
+    const n = state.tx.filter(x => effCat(x).rid === nr.id).length;
     toast(`წესი შეიქმნა: „${scope === 'merchant' ? t.merchant : t.bankCat}“ → ${cat === '__none' ? 'გეგმის გარეშე' : catName(cat)} (${n} ტრანზაქცია)`);
   }
   save(); closeSheet(); ui.keepScroll = true; render();
@@ -1723,12 +1800,32 @@ function viewMore(R){
   }
   if (!state.merges.length) h += `<div class="empty">ჯერ არაფერი გაერთიანებულა.</div>`;
   h += `</div></details>`;
-  // rules
-  const rules = state.rules.filter(r => r.itemId === '__internal' || r.itemId === '__none' || IDX.has(r.itemId));
-  h += `<details class="sec"><summary><h2>კატეგორიზაციის წესები</h2><span class="sum">${rules.length}</span></summary><div class="body">
-    <p class="hint">იქმნება ტრანზაქციაზე კატეგორიის მინიჭებისას. წაშლის შემდეგ შესაბამისი ტრანზაქციები ისევ კატეგორიის გარეშე დარჩება.</p>`;
-  for (const r of rules) h += `<div class="list-row"><div class="grow"><div class="wrap"><b>${esc(r.value)}</b></div><div class="small muted wrap">${r.type === 'merchant' ? 'მიმღები/ობიექტი' : 'ბანკის კატეგორია'} → ${esc(r.itemId === '__none' ? 'გეგმის გარეშე' : catName(r.itemId))}</div></div><button class="del" data-act="delrule" data-id="${r.id}" aria-label="წესის წაშლა">✕</button></div>`;
+  // rules: every rule (also broken ones), what it decides now, plus what is matched automatically without a rule
+  const RS = ruleStats();
+  const broken = r => !ruleTargetOk(r);
+  const rules = state.rules.slice().sort((a, b) => broken(b) - broken(a) || ruleTarget(a).localeCompare(ruleTarget(b), 'ka') || a.value.localeCompare(b.value, 'ka'));
+  const nBroken = rules.filter(broken).length;
+  h += `<details class="sec"${ui.openRules ? ' open' : ''} data-rules="1"><summary><h2>კატეგორიზაციის წესები</h2><span class="sum">${rules.length}${nBroken ? ` · <span class="neg">⚠ ${nBroken}</span>` : ''}</span></summary><div class="body">
+    <p class="hint">წესი იქმნება ტრანზაქციაზე კატეგორიის მინიჭებისას („ყველა …-ზე“). მაღაზიის წესი მის ყველა სახელს ეხება (მაგ. „Ori Nabiji“ = „FLT*2nabiji“). შეეხე წესს — ნახავ რომელ ტრანზაქციებს ეხება და შეცვლი სტრიქონს. ✕ — წაშლა.</p>
+    <div class="small t2" style="margin:2px 0 6px">თანმიმდევრობა: ხელით მინიჭება → შიდა გადარიცხვა → მაღაზიის წესი → ბანკის კატეგორიის წესი → ავტომატური (სახელით).</div>`;
+  for (const r of rules) {
+    const st = RS.rules.get(r.id) || { n: 0, sum: 0, tr: false };
+    const dirB = r.dir && (st.tr || (!st.n && /გადარიცხ|ჩარიცხ|p2p/i.test(r.value))) ? ` <span class="flag ${r.dir === 'in' ? 'ok' : 'dout'}">${r.dir === 'in' ? 'შემოსული' : 'გასული'}</span>` : '';
+    const meta = broken(r) ? `<span class="neg">⚠ გეგმის სტრიქონი წაშლილია — წესი არ მუშაობს. შეეხე და მიუთითე ახალი, ან წაშალე.</span>`
+      : st.n ? `${st.n} ტრანზაქცია · ${fmt(Math.abs(st.sum))} ₾` : `<span class="muted">ახლა არცერთ ტრანზაქციას არ ეხება</span>`;
+    h += `<div class="list-row rule-row" data-act="rule" data-id="${r.id}"><div class="grow"><div class="wrap"><b>${esc(r.value)}</b>${dirB}</div>
+      <div class="small t2 wrap">${r.type === 'merchant' ? 'მაღაზია / მიმღები' : 'ბანკის კატეგორია'} → <b>${esc(ruleTarget(r))}</b></div><div class="small wrap">${meta}</div></div>
+      <button class="del" data-act="delrule" data-id="${r.id}" aria-label="წესის წაშლა">✕</button></div>`;
+  }
   if (!rules.length) h += `<div class="empty">წესები ჯერ არ არის.</div>`;
+  // automatic matches (no rule): bank category → plan line by its name
+  h += `<div class="ghead" style="margin-top:14px">ავტომატურად, წესის გარეშე</div>
+    <p class="hint">აქ ჩანს ის, რასაც აპლიკაცია თვითონ აკავშირებს ბანკის კატეგორიით და გეგმის სტრიქონის სახელით. არასწორია? შეეხე და აირჩიე სწორი — შეიქმნება წესი.</p>`;
+  for (const [k, g] of RS.auto) h += `<div class="list-row rule-row" data-act="autorule" data-k="${esc(k)}"><div class="grow"><div class="wrap"><b>${esc(g.label)}</b>${g.tr ? ` <span class="flag ${g.dir === 'in' ? 'ok' : 'dout'}">${g.dir === 'in' ? 'შემოსული' : 'გასული'}</span>` : ''}</div>
+    <div class="small t2 wrap">${g.bankCat ? 'ბანკის კატეგორია' : 'მაღაზია / მიმღები'} → <b>${esc(catName(g.cat))}</b></div><div class="small wrap">${g.tx.length} ტრანზაქცია · ${fmt(Math.abs(g.sum))} ₾</div></div></div>`;
+  if (!RS.auto.size) h += `<div class="empty">ავტომატური დაკავშირება არ არის.</div>`;
+  h += `<div class="list-row"><div class="grow small t2 wrap">შენს ანგარიშებს შორის (შიდა, არ ითვლება): <b>${RS.internal}</b> ტრანზაქცია</div></div>
+    <div class="list-row${RS.unc ? ' rule-row' : ''}"${RS.unc ? ' data-act="go-unc"' : ''}><div class="grow small wrap">${RS.unc ? `<span class="neg">კატეგორიის გარეშე: <b>${RS.unc}</b> ტრანზაქცია</span> — შეეხე და მიანიჭე` : '<span class="pos">ყველა ტრანზაქციას კატეგორია აქვს ✓</span>'}</div></div>`;
   h += `</div></details>`;
   // data
   h += `<div class="card"><h2>მონაცემები</h2>
@@ -1772,7 +1869,7 @@ function onAct(e){
   if (a === 'merge-off') { openCat(b.dataset.id); return; }
   if (a === 'store-pick') { if (sheetCtx) { const k = b.dataset.key; b.checked ? sheetCtx.picked.add(k) : sheetCtx.picked.delete(k); const btn = sheet.querySelector('[data-act="merge-do"]'); if (btn) btn.textContent = `გაერთიანება (${sheetCtx.picked.size})`; } return; }
   if (a === 'merge-do') { doMerge(b.dataset.id); return; }
-  if (a === 'unmerge') { const m = state.merges.find(g => g.id === b.dataset.id); if (!m || !confirm(`„${m.name}“ — გაერთიანება გაუქმდეს?`)) return; state.merges = state.merges.filter(g => g.id !== m.id); save(); ui.keepScroll = true; render(); return; }
+  if (a === 'unmerge') { const m = state.merges.find(g => g.id === b.dataset.id); if (!m || !confirm(`„${m.name}“ — გაერთიანება გაუქმდეს?`)) return; state.merges = state.merges.filter(g => g.id !== m.id); ruleKeyCache = new Map(); save(); ui.keepScroll = true; render(); return; }
   if (a === 'theme') { state.settings.theme = b.dataset.v; applyTheme(); save(); ui.keepScroll = true; render(); return; }
   if (a === 'setcat') { setCat(b.dataset.id, b.dataset.cat); return; }
   if (a === 'newcat') {
@@ -1798,12 +1895,21 @@ function onAct(e){
     if (open) autosizeIn(el);
     return;
   }
-  if (a === 'del') { const l = b.dataset.list, it = state[l].find(x => x.id === b.dataset.id); if (!confirm(`${it && it.name ? '„' + it.name + '“' : 'ჩანაწერი'} წაიშალოს?`)) return;
-    state[l] = state[l].filter(x => x.id !== b.dataset.id); save(); ui.keepScroll = true; render(); return; }
+  if (a === 'del') { const l = b.dataset.list, it = state[l].find(x => x.id === b.dataset.id); const nr = state.rules.filter(r => r.itemId === b.dataset.id).length;
+    if (!confirm(`${it && it.name ? '„' + it.name + '“' : 'ჩანაწერი'} წაიშალოს?${nr ? `\nმასზე მიბმული ${nr} წესიც წაიშლება (ტრანზაქციები ავტომატურ კატეგორიაზე ან კატეგორიის გარეშე დარჩება).` : ''}`)) return;
+    state[l] = state[l].filter(x => x.id !== b.dataset.id); state.rules = state.rules.filter(r => r.itemId !== b.dataset.id); save(); ui.keepScroll = true; render(); return; }
   if (a === 'chip') { e.preventDefault(); const it = state[b.dataset.list].find(x => x.id === b.dataset.id); if (!it) return; const m = +b.dataset.m;
     it.months = (it.months || []).includes(m) ? it.months.filter(x => x !== m) : [...(it.months || []), m].sort((x, y) => x - y); save(); ui.keepScroll = true; render(); return; }
   if (a === 'scen') { state.settings.scenario = b.dataset.v; save(); ui.keepScroll = true; render(); return; }
-  if (a === 'delrule') { state.rules = state.rules.filter(r => r.id !== b.dataset.id); save(); ui.keepScroll = true; render(); return; }
+  if (a === 'delrule') { e.stopPropagation(); const r = state.rules.find(x => x.id === b.dataset.id); if (!r || !confirm(`წესი „${r.value}“ → ${ruleTarget(r)} წაიშალოს? მისი ტრანზაქციები ავტომატურ კატეგორიაზე ან კატეგორიის გარეშე დარჩება.`)) return;
+    state.rules = state.rules.filter(x => x.id !== r.id); save(); closeSheet(); ui.keepScroll = true; render(); return; }
+  if (a === 'rule') { openRule(b.dataset.id); return; }
+  if (a === 'autorule') { openAutoRule(b.dataset.k); return; }
+  if (a === 'rule-set') { const r = state.rules.find(x => x.id === b.dataset.id); if (!r) return; r.itemId = b.dataset.cat; save(); ui.keepScroll = true; render(); openRule(r.id); toast('წესი შეიცვალა → ' + ruleTarget(r)); return; }
+  if (a === 'auto-set') { const g = autoGroups.get(b.dataset.k); if (!g) return;
+    const nr = addRule(g.bankCat ? 'bankcat' : 'merchant', (g.bankCat || g.merchant).toLowerCase(), b.dataset.cat, g.tx[0]);
+    save(); closeSheet(); ui.keepScroll = true; render();
+    toast(`წესი შეიქმნა: „${g.label}“ → ${ruleTarget(nr)} (${state.tx.filter(x => effCat(x).rid === nr.id).length} ტრანზაქცია)`); return; }
   if (a === 'delacct') { const ib = b.dataset.iban; const n = state.tx.filter(t => t.acct === ib).length;
     if (!confirm(`წაიშალოს ანგარიში ${ib} და მისი ${n} ტრანზაქცია?`)) return;
     delete state.accounts[ib]; state.tx = state.tx.filter(t => t.acct !== ib); state.imports = state.imports.filter(x => x.acct !== ib); save(); ui.keepScroll = true; render(); return; }
@@ -1818,7 +1924,7 @@ function onAct(e){
 }
 main.addEventListener('click', onAct);
 sheet.addEventListener('click', onAct);
-main.addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.sec) { ui.openSec[d.dataset.sec] = d.open; if (d.open) autosizeIn(d); } }, true);
+main.addEventListener('toggle', e => { const d = e.target; if (d.dataset && d.dataset.sec) { ui.openSec[d.dataset.sec] = d.open; if (d.open) autosizeIn(d); } if (d.dataset && d.dataset.rules) ui.openRules = d.open; }, true);
 main.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('textarea.nm-in')) { e.preventDefault(); e.target.blur(); } });
 main.addEventListener('input', e => {
   const t = e.target;
