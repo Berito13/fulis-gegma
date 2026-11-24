@@ -381,7 +381,6 @@ function normalize(st){
   for (const k of ['income', 'fixed', 'variable']) for (const it of out[k]) migrateItem(it, out.settings, k);
   // older imports: TBC card → loan account transfers were not labelled as loan repayment
   for (const t of out.tx) if (t.bank === 'TBC' && t.bankCat !== 'სესხის დაფარვა' && (t.op === 'LCOL' || /სესხის დაფარვა|თანხის ავტომატური შეგროვება/.test(t.desc || ''))) t.bankCat = 'სესხის დაფარვა';
-  for (const t of out.tx) if (typeof refineTx === 'function') refineTx(t);
   return out;
 }
 // older saves had one amount (+ "months"/"once" schedule for income); convert to repeat / per-month amounts
@@ -540,25 +539,26 @@ function ruleFor(t){
   return r || null;
 }
 // bank category → words that a matching plan line name contains (works for any plan, also renamed / own lines)
+// (line names may be Georgian, English or with typos — e.g. "Subscriptions", "საბსქრიფშენი", "sbuscribtion")
 const NAME_MATCH = [
-  [/^სესხის (დაფარვა|დაზღვევა)$/, /სესხ|იპოთეკ|კრედიტ|განვადებ/],
-  [/^(სუპერმარკეტები|საკვების მაღაზიები|სასურსათო მაღაზიები)$/, /საკვებ|მარკეტ|სურსათ|პროდუქტ|სასადილო|კვება/],
-  [/^(კაფე \/ სწრაფი კვება|რესტორნები|ბარები)$/, /კაფე|რესტორ|მიწოდ|wolt|glovo|კვება/i],
-  [/^(საწვავი|ტაქსი|ტრანსპორტი|პარკინგი|მანქანა)$/, /ტრანსპორტ|საწვავ|ტაქსი|მანქან|ავტო|ბენზინ/],
-  [/^(კომუნალური|კომუნალური, მობილური, ჯარიმები|კავშირგაბმულობა)$/, /კომუნალ|მობილურ|ინტერნეტ|ტელეფონ|დენ|გაზ|წყალ/],
-  [/^(აფთიაქი|სამედიცინო)$/, /ჯანმრთ|აფთიაქ|მედიც|წამალ|ექიმ/],
-  [/^ტანსაცმელი$/, /ტანსაცმ|ფეხსაცმ/],
-  [/^გართობა$/, /გართობ|კინო/],
-  [/^ბანკის საკომისიო$/, /საკომისიო|ბანკ/],
-  [/^ხელფასი$/, /ხელფას/],
-  [/^ბავშვები$/, /ბავშვ|სათამაშ/],
-  [/^სილამაზე$/, /სილამაზ|კოსმეტ|თმ/],
-  [/^სპორტი$/, /სპორტ|დარბაზ|ფიტნეს/],
-  [/^(განათლება|წიგნები)$/, /განათლ|სწავლ|წიგნ|კურს/],
-  [/^(გამოწერები|ციფრული სერვისები)$/, /გამოწერ|subscription/i],
-  [/^სახლი და რემონტი$/, /სახლ|რემონტ|ავეჯ/],
-  [/^მოგზაურობა$/, /მოგზაურ|შვებულ|დასვენ/],
-  [/^განაღდება$/, /ნაღდ|განაღდ|ბანკომატ/]
+  [/^სესხის (დაფარვა|დაზღვევა)$/, /სესხ|იპოთეკ|კრედიტ|განვადებ|loan|mortgage|credit/i],
+  [/^(სუპერმარკეტები|საკვების მაღაზიები|სასურსათო მაღაზიები)$/, /საკვებ|მარკეტ|სურსათ|პროდუქტ|სასადილო|კვება|საჭმელ|food|grocer|market/i],
+  [/^(კაფე \/ სწრაფი კვება|რესტორნები|ბარები)$/, /კაფე|რესტორ|მიწოდ|wolt|glovo|კვება|cafe|café|restaur|delivery|eat/i],
+  [/^(საწვავი|ტაქსი|ტრანსპორტი|პარკინგი|მანქანა)$/, /ტრანსპორტ|საწვავ|ტაქსი|მანქან|ავტო|ბენზინ|transport|taxi|fuel|petrol|car\b|bolt|yandex/i],
+  [/^(კომუნალური|კომუნალური, მობილური, ჯარიმები|კავშირგაბმულობა)$/, /კომუნალ|მობილურ|ინტერნეტ|ტელეფონ|დენ|გაზ|წყალ|utilit|bill|mobile|internet|phone/i],
+  [/^(აფთიაქი|სამედიცინო)$/, /ჯანმრთ|აფთიაქ|მედიც|წამალ|ექიმ|health|pharm|medic|doctor/i],
+  [/^ტანსაცმელი$/, /ტანსაცმ|ფეხსაცმ|cloth|shoe/i],
+  [/^გართობა$/, /გართობ|კინო|fun|entertain|cinema/i],
+  [/^ბანკის საკომისიო$/, /საკომისიო|fee|commission/i],
+  [/^ხელფასი$/, /ხელფას|შემოსავ|salary|income|wage/i],
+  [/^ბავშვები$/, /ბავშვ|სათამაშ|kid|child|baby|toy/i],
+  [/^სილამაზე$/, /სილამაზ|კოსმეტ|თმ|beauty|cosmet/i],
+  [/^სპორტი$/, /სპორტ|დარბაზ|ფიტნეს|sport|gym|fitness/i],
+  [/^(განათლება|წიგნები)$/, /განათლ|სწავლ|წიგნ|კურს|educat|book|course|school/i],
+  [/^(გამოწერები|ციფრული სერვისები)$/, /გამოწერ|ს[აუ]ბ?ს[კქ]რ|subs|sbus|subcr|sub\b|abonem|აბონემენტ|სტრიმ|stream|ციფრულ|digital|netflix|spotify|youtube|setanta|disney|apple|google/i],
+  [/^სახლი და რემონტი$/, /სახლ|რემონტ|ავეჯ|home|house|repair|furnit/i],
+  [/^მოგზაურობა$/, /მოგზაურ|შვებულ|დასვენ|travel|vacation|holiday|trip/i],
+  [/^განაღდება$/, /ნაღდ|განაღდ|ბანკომატ|cash|atm/i]
 ];
 // letters only, Georgian → Latin, spelling variants folded (same idea as the store key) — to compare names written in either script
 const foldText = s => [...(s || '').toLowerCase()].map(c => (typeof GEO_LAT !== 'undefined' && GEO_LAT[c]) || c).join('')
@@ -724,10 +724,7 @@ function buildTBC(o){
   const desc = o.desc || '', op = o.op || '', partner = o.partner || '';
   let merchant = '', bankCat = o.type || '';
   const pos = /^POS(?:\s+wallet)?\s*-\s*(.+?),\s*[\d.,]+\s+[A-Z]{3},\s*[^,]*,\s*([^,]+)/.exec(desc);
-  if (pos) {
-    merchant = pos[1].trim(); bankCat = pos[2].trim();
-    const mm = /MCC:\s*(\d{4})/.exec(desc); if (mm && MCC[mm[1]]) bankCat = MCC[mm[1]];
-  }
+  if (pos) { merchant = pos[1].trim(); bankCat = tbcPosCat(desc) || pos[2].trim(); }
   else if (/^\*?MBS/.test(op)) { merchant = desc.replace(/^საკომისიო:\s*/, '').split(';')[0].trim(); if (/^საკომისიო/.test(desc) || op === 'MBSFE') bankCat = 'ბანკის საკომისიო'; }
   else if (!partner || GENERIC_PARTNER.test(partner)) merchant = desc.split(/[;,]/)[0].trim();
   else merchant = partner.split(',')[0].trim();
@@ -735,8 +732,8 @@ function buildTBC(o){
   else if (/INSP/.test(op)) bankCat = 'სესხის დაზღვევა';
   else if (/TPC/.test(op) || /^საკომისიო/.test(desc) || /საკომისიო/.test(partner) && !pos) bankCat = 'ბანკის საკომისიო';
   else if (/LDSB/.test(op)) bankCat = 'სესხის მიღება';
+  else if (amt > 0 && SALARY_RE.test(desc + ' ' + (o.info || ''))) bankCat = 'ხელფასი';     // salary first, however the company sent it
   else if (['GMB', 'GMN', 'P2P'].includes(op)) { bankCat = 'პირადი გადარიცხვა'; if (op === 'P2P') merchant = 'P2P გადარიცხვა'; }
-  else if (/ხელფას/.test(desc)) bankCat = 'ხელფასი';
   else if (/ხაზინის ერთიანი/.test(o.info || '')) bankCat = 'სახელმწიფო მომსახურება';
   const id = o.txid ? 'TBC:' + o.acct + ':' + o.txid
     : o.src === 'pdf' ? 'TBCP:' + o.acct + ':' + o.date + ':' + amt + ':' + (o.bal ?? '') + ':' + hash(desc.replace(/\s+/g, ''))
@@ -746,7 +743,7 @@ function buildTBC(o){
 }
 
 /* ---------- Bank of Georgia ---------- */
-const MCC = {'5411':'სუპერმარკეტები','5412':'სუპერმარკეტები','5422':'საკვების მაღაზიები','5441':'საკვების მაღაზიები','5451':'საკვების მაღაზიები','5462':'საკვების მაღაზიები','5499':'საკვების მაღაზიები','5812':'რესტორნები','5813':'ბარები','5814':'კაფე / სწრაფი კვება','5541':'საწვავი','5542':'საწვავი','5983':'საწვავი','4121':'ტაქსი','4111':'ტრანსპორტი','4131':'ტრანსპორტი','7523':'პარკინგი','5912':'აფთიაქი','8011':'სამედიცინო','8021':'სამედიცინო','8062':'სამედიცინო','8071':'სამედიცინო','8099':'სამედიცინო','5651':'ტანსაცმელი','5661':'ტანსაცმელი','5691':'ტანსაცმელი','5699':'ტანსაცმელი','5311':'უნივერმაღები','5310':'უნივერმაღები','5331':'უნივერმაღები','5399':'უნივერმაღები','4814':'კავშირგაბმულობა','4899':'გამოწერები','4900':'კომუნალური','5732':'ელექტრონიკა','5045':'ელექტრონიკა','5200':'სახლი და რემონტი','5251':'სახლი და რემონტი','5712':'სახლი და რემონტი','5719':'სახლი და რემონტი','7230':'სილამაზე','5977':'სილამაზე','7997':'სპორტი','5941':'სპორტი','7832':'გართობა','7922':'გართობა','7996':'გართობა','5942':'წიგნები','5943':'წიგნები','8220':'განათლება','8299':'განათლება','4511':'მოგზაურობა','7011':'მოგზაურობა','4722':'მოგზაურობა','5921':'ალკოჰოლი და თამბაქო','5993':'ალკოჰოლი და თამბაქო','6011':'განაღდება','6010':'განაღდება','5815':'ციფრული სერვისები','5816':'ციფრული სერვისები','5817':'ციფრული სერვისები','5818':'ციფრული სერვისები','5995':'ცხოველები','0742':'ცხოველები','5641':'ბავშვები','5945':'ბავშვები','4829':'გადარიცხვები','6012':'ფინანსური მომსახურება','6051':'ფინანსური მომსახურება','9399':'სახელმწიფო მომსახურება','9311':'გადასახადები','4215':'კურიერი / ფოსტა','5039':'სახლი და რემონტი','5192':'წიგნები','5992':'ყვავილები','6538':'გადარიცხვები','5511':'მანქანა','5532':'მანქანა','5533':'მანქანა','5599':'მანქანა','7538':'მანქანა','7542':'მანქანა'};
+const MCC = {'5411':'სუპერმარკეტები','5412':'სუპერმარკეტები','5422':'საკვების მაღაზიები','5441':'საკვების მაღაზიები','5451':'საკვების მაღაზიები','5462':'საკვების მაღაზიები','5499':'საკვების მაღაზიები','5812':'რესტორნები','5813':'ბარები','5814':'კაფე / სწრაფი კვება','5541':'საწვავი','5542':'საწვავი','5983':'საწვავი','4121':'ტაქსი','4111':'ტრანსპორტი','4131':'ტრანსპორტი','7523':'პარკინგი','5912':'აფთიაქი','8011':'სამედიცინო','8021':'სამედიცინო','8062':'სამედიცინო','8071':'სამედიცინო','8099':'სამედიცინო','5651':'ტანსაცმელი','5661':'ტანსაცმელი','5691':'ტანსაცმელი','5699':'ტანსაცმელი','5311':'უნივერმაღები','5310':'უნივერმაღები','5331':'უნივერმაღები','5399':'უნივერმაღები','4814':'კავშირგაბმულობა','4899':'გამოწერები','4900':'კომუნალური','5732':'ელექტრონიკა','5045':'ელექტრონიკა','5200':'სახლი და რემონტი','5251':'სახლი და რემონტი','5712':'სახლი და რემონტი','5719':'სახლი და რემონტი','7230':'სილამაზე','5977':'სილამაზე','7997':'სპორტი','5941':'სპორტი','7832':'გართობა','7922':'გართობა','7996':'გართობა','5942':'წიგნები','5943':'წიგნები','8220':'განათლება','8299':'განათლება','4511':'მოგზაურობა','7011':'მოგზაურობა','4722':'მოგზაურობა','5921':'ალკოჰოლი და თამბაქო','5993':'ალკოჰოლი და თამბაქო','6011':'განაღდება','6010':'განაღდება','5815':'ციფრული სერვისები','5816':'ციფრული სერვისები','5817':'ციფრული სერვისები','5818':'ციფრული სერვისები','5995':'ცხოველები','0742':'ცხოველები','5641':'ბავშვები','5945':'ბავშვები','4829':'გადარიცხვები','6012':'ფინანსური მომსახურება','6051':'ფინანსური მომსახურება','9399':'სახელმწიფო მომსახურება','9311':'გადასახადები','4215':'კურიერი / ფოსტა','5039':'სახლი და რემონტი','5192':'წიგნები','5992':'ყვავილები','6538':'გადარიცხვები','5511':'მანქანა','5532':'მანქანა','5533':'მანქანა','5599':'მანქანა','7538':'მანქანა','7542':'მანქანა','5734':'ციფრული სერვისები','5735':'ციფრული სერვისები','7372':'ციფრული სერვისები','4816':'ციფრული სერვისები','5968':'გამოწერები'};
 function parseBOG(sheets){
   const out = { bank: 'BOG', accounts: [], tx: [] };
   const det = sheets.find(s => s.rows.some(r => S_(r[0]) === 'ანგარიშის ნომერი:'));
@@ -789,7 +786,7 @@ function buildBOG(desc){
   let bankCat = mcc ? (MCC[mcc] || 'MCC ' + mcc) : type;
   if (/სესხის დაფარვა/.test(desc)) { bankCat = 'სესხის დაფარვა'; merchant = merchant || 'სესხის დაფარვა'; }
   else if (type === 'გადარიცხვა') bankCat = 'პირადი გადარიცხვა';
-  else if (type === 'ჩარიცხვა') bankCat = /ხელფას/.test(kv['დანიშნულება'] || '') ? 'ხელფასი' : (mcc ? bankCat : 'ჩარიცხვა');
+  else if (type === 'ჩარიცხვა') bankCat = SALARY_RE.test(kv['დანიშნულება'] || '') ? 'ხელფასი' : (mcc ? bankCat : 'ჩარიცხვა');
   else if (type === 'განაღდება') { bankCat = 'განაღდება'; merchant = 'განაღდება (ბანკომატი)'; }
   else if (/საკომისიო/.test(type)) bankCat = 'ბანკის საკომისიო';
   if (!merchant && /ავტობუსი|მიკროავტობუსი|მეტრო/.test(desc)) { merchant = 'საზოგადოებრივი ტრანსპორტი'; bankCat = 'ტრანსპორტი'; }
@@ -936,9 +933,22 @@ function parseBOGpdf(pages){
   out.check = startBal != null && endBal != null ? { start: startBal, end: endBal, sum: out.tx.filter(t => t.cur === 'GEL').reduce((a, t) => a + t.amt, 0) } : null;
   return out;
 }
+// salary / pay words in a payment description (any company, any bank)
+const SALARY_RE = /ხელფას|სახელფასო|შრომის ანაზღ|შრომითი ანაზღ|ანაზღაურება სამუშაო|პრემი|salary|payroll|wage/i;
+// subscriptions are recognised by the service name — banks file them under random codes (SETANTA = "conversion", DISNEY = "toys")
+const SUB_RE = /netflix|spotify|youtube|google\s*(one|play|storage|\*)|apple\.com|itunes|icloud|chatgpt|openai|anthropic|claude\.ai|microsoft|xbox|playstation|psn|steam(games|powered)?\b|adobe|disney|hbo|max\.com|amazon\s*prime|prime\s*video|patreon|megogo|setanta|myvideo|canva|notion|dropbox|linkedin|zoom\.us|telegram|duolingo|audible|deezer|tidal|crunchyroll|github|figma|midjourney|grammarly|nordvpn|expressvpn|surfshark|1password|twitch|vimeo|perplexity|cursor|gemini|copilot|sweet\.tv|kinopoisk/i;
+// TBC card payment: "…, <date>, [კონვერტაცია, ]<category>, MCC: nnnn" → the MCC name, else the category right before MCC
+function tbcPosCat(desc){
+  const mm = /MCC:\s*(\d{4})/.exec(desc || ''); if (mm && MCC[mm[1]]) return MCC[mm[1]];
+  const segs = (desc || '').split(',').map(s => s.trim()); const i = segs.findIndex(s => /^MCC:/.test(s));
+  const c = i > 0 ? segs[i - 1] : ''; return c && c !== 'კონვერტაცია' ? c : (mm ? 'MCC ' + mm[1] : '');
+}
 // corrections that apply to every transaction (new imports and already saved ones)
 function refineTx(t){
   const d = t.desc || '';
+  if (t.bank === 'TBC' && /^POS/.test(d)) { const c = tbcPosCat(d); if (c) t.bankCat = c; }
+  if (SUB_RE.test(t.merchant || '') || SUB_RE.test(d) && /^POS|გადახდა/.test(d)) t.bankCat = 'გამოწერები';
+  if (t.amt > 0 && SALARY_RE.test(d + ' ' + (t.info || '')) && !/^POS/.test(d)) t.bankCat = 'ხელფასი';
   if (/glovo|wolt|bolt\s*food|yandex\s*eda/i.test(t.merchant || '')) t.bankCat = 'კაფე / სწრაფი კვება';                 // food delivery, whatever MCC the bank used
   if (/დეპოზიტ/.test(d)) { t.op = 'DEP'; t.bankCat = 'დეპოზიტი / დანაზოგი'; t.merchant = t.amt < 0 ? 'დეპოზიტზე შენატანი' : 'დეპოზიტიდან'; }  // own savings
   if (/დანიშნულება:\s*კონვერტაცია/.test(d)) { t.op = 'FX'; t.bankCat = 'კონვერტაცია'; }                                // currency exchange
@@ -1706,6 +1716,12 @@ let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTime
     const keys = new Set(m.keys);
     for (const t of state.tx) if (keys.has(normKeyV1(t.merchant))) keys.add(normKey(t.merchant));
     m.keys = [...keys]; m.kv = 2; changed = true;
+  }
+  // re-apply the latest recognition rules to transactions saved by older versions
+  for (const t of state.tx) {
+    const before = t.bankCat + '|' + t.op + '|' + t.merchant;
+    try { refineTx(t); } catch (e) {}
+    if (before !== t.bankCat + '|' + t.op + '|' + t.merchant) changed = true;
   }
   if (changed && !loadFailed) save();
 })();
